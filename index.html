@@ -3145,6 +3145,14 @@ function update() {
 
 
         if(e.type === 'npc') {
+            
+            // --- FIX: NOAH & DORIS STAY STILL ---
+            if (e.name === "Noah" || e.name === "Doris") {
+                e.isWalking = false; // Force stop
+                return; // Skip movement logic completely
+            }
+            // ------------------------------------
+
             e.moveTimer--;
             if(e.moveTimer <= 0) {
                 if(Math.random() < 0.4) {
