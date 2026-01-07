@@ -3,6 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <title>The Promised Dawn: A Game for Noah's Friends</title>
+
+<!-- PASTE THESE 4 LINES HERE: -->
+    <meta name="description" content="A game designed by Noah. Hope you enjoy it.">
+    <meta property="og:title" content="The Promised Dawn">
+    <meta property="og:description" content="A game designed by Noah. Hope you enjoy it.">
+    <meta name="author" content="Noah">
+    <!-- -------------------------- -->
+
     <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
     <style>
 
@@ -1615,145 +1623,188 @@ Menu.drawHero = function(id, cls) {
 };
 
 window.addEventListener('load', () => {
+    // 1. Preload all sounds immediately
+    AudioSys.init(); 
+
+    // 2. Draw Menu Heroes
     Menu.initEmbers(); 
     Menu.drawHero('preview-warrior', 'warrior');
     Menu.drawHero('preview-mage', 'mage');
     Menu.drawHero('preview-rogue', 'rogue');
 
-    // 1. Try to play music immediately
+    // 3. Try to play music (might get blocked by browser initially)
     AudioSys.playBGM('home');
 
-    // 2. If browser blocks it, wait for the FIRST CLICK to start it
-    const startAudio = () => {
-        // Wake up the Audio Engine
-        if (AudioSys.ctx.state === 'suspended') AudioSys.ctx.resume();
-        // Play the music if it's not playing
-        if (AudioSys.bgm && AudioSys.bgm.paused) AudioSys.bgm.play();
+    // 4. THE MAC FIX: Force Audio Engine to Wake Up on First Click
+    const wakeUpAudio = () => {
+        if (AudioSys.ctx.state === 'suspended') {
+            AudioSys.ctx.resume().then(() => {
+                console.log("Audio Engine Woken Up!");
+            });
+        }
+        // Play music if it was blocked
+        if (AudioSys.bgm && AudioSys.bgm.paused) AudioSys.bgm.play().catch(e=>{});
     };
 
-    // Add listener to the whole screen
-    document.body.addEventListener('click', startAudio, { once: true });
-    document.body.addEventListener('keydown', startAudio, { once: true });
+    // Listen for ANY click or keypress to wake up the engine
+    document.body.addEventListener('click', wakeUpAudio, { once: true });
+    document.body.addEventListener('keydown', wakeUpAudio, { once: true });
 
-    // 3. AUTO-SELECT "START NEW GAME" (Keyboard Support)
-    // Small delay to ensure DOM is ready
+    // 5. Update Menu Selection
     setTimeout(() => {
         if(typeof Menu !== 'undefined') Menu.updateSelection();
     }, 100);
 });
+
+
+
+
+
+
 const cvs = document.getElementById('cvs');
 const ctx = cvs.getContext('2d');
 const miniCtx = document.getElementById('minimap').getContext('2d');
 
 // --- AUDIO ENGINE START ---
+// --- OPTIMIZED AUDIO SYSTEM (Mac Lag Fix) ---
 const AudioSys = {
+    // 1. Create the Audio Context (The engine)
     ctx: new (window.AudioContext || window.webkitAudioContext)(),
     bgm: null,
     currentBgmKey: null,
-   srcs: {
+    
+    // 2. Storage for preloaded sounds
+    cache: {}, 
+
+    srcs: {
         // --- BGM ---
         home: "audio/Home.mp3", 
-        adventure: "audio/Adventure_Theme.mp3",      // Was "Adventure Theme.mp3"
-        adventure_new: "audio/New_adventure.mp3",    // Was "New adventure.mp3"
-        farm_day: "audio/Relaxing_Theme.mp3",        // Was "Relaxing Theme.mp3"
-        farm_night: "audio/night_ambience.mp3",      // Was "night ambience.mp3"
+        adventure: "audio/Adventure_Theme.mp3",
+        adventure_new: "audio/New_adventure.mp3",
+        farm_day: "audio/Relaxing_Theme.mp3",
+        farm_night: "audio/night_ambience.mp3",
         
         // --- SYSTEM / UI ---
-        bag: "audio/bag_open.mp3",                   // Was "bag open.mp3"
+        bag: "audio/bag_open.mp3",
         error: "audio/error.mp3",
         save: "audio/save.mp3",
-        over: "audio/game_over.mp3",                 // Was "game over.mp3"
-        
-        // 1. KEEP ORIGINAL (For RPG items)
-        equip: "audio/item_equip.mp3",               // Was "item equip.mp3"
-        
-        // 2. ADD NEW ONE (For Farm Tools)
+        over: "audio/game_over.mp3",
+        equip: "audio/item_equip.mp3",
         tool_swap: "audio/equip.mp3",   
-        
         lvlup: "audio/lvlup.mp3",
-        hover: "audio/Menu_Hover.mp3",               // Was "Menu Hover.mp3"
+        hover: "audio/Menu_Hover.mp3",
         buy: "audio/SelectBuy.mp3",
-        class_hover: "audio/Class_Hover.mp3",        // Was "Class Hover.mp3"
-        class_choose: "audio/Class_chosen.mp3",      // Was "Class chosen.mp3"
+        class_hover: "audio/Class_Hover.mp3",
+        class_choose: "audio/Class_chosen.mp3",
         esc: "audio/ESC.mp3", 
         reminder: "audio/reminder.mp3",
         npc: "audio/npc.mp3", 
         success: "audio/Success.mp3", 
         victory: "audio/Victory.mp3", 
         tele: "audio/teleport.mp3",
-        pop: "audio/Pop_Sound_Effect.mp3",           // Was "Pop - Sound Effect.mp3"
+        pop: "audio/Pop_Sound_Effect.mp3",
         btn_click: "audio/button.mp3",
         item_found: "audio/item.mp3", 
-        menu_scroll: "audio/menu_button.mp3",        // Was "menu button.mp3"
-        menu_tab: "audio/menu_change.mp3",           // Was "menu change.mp3"
+        menu_scroll: "audio/menu_button.mp3",
+        menu_tab: "audio/menu_change.mp3",
         gate: "audio/unlockGate.mp3",
 
         // --- FARMING ---
         break: "audio/Break.mp3",
         chop: "audio/Chop.mp3",
-        hoe: "audio/Hoe_Dig.mp3",                    // Was "Hoe Dig.mp3"
-        rock: "audio/Rock_Smash_Sound_Effect.mp3",   // Was "Rock Smash Sound Effect.mp3"
+        hoe: "audio/Hoe_Dig.mp3",
+        rock: "audio/Rock_Smash_Sound_Effect.mp3",
         sickle: "audio/sickle.mp3",
-        rooster: "audio/rooster_crow.mp3",           // Was "rooster crow.mp3"
+        rooster: "audio/rooster_crow.mp3",
         water: "audio/Watering.mp3",
-        well: "audio/well_water.mp3",                // Was "well water.mp3"
+        well: "audio/well_water.mp3",
         plant: "audio/plant.mp3",
         sell: "audio/sell.mp3",
         put: "audio/put.mp3",
-        put_animal: "audio/put_animal.mp3",          // Was "put animal.mp3"
+        put_animal: "audio/put_animal.mp3",
         fishing: "audio/fishing.mp3",
         pet_anim: "audio/Pet.mp3",
         
         // --- MOVEMENT ---
         step: "audio/Footstep.mp3",
-        horse: "audio/horse_gallop.mp3",             // Was "horse gallop.mp3"
-        horse_walk: "audio/horse_walk.mp3",          // Was "horse walk.mp3"
+        horse: "audio/horse_gallop.mp3",
+        horse_walk: "audio/horse_walk.mp3",
 
-        // --- COMBAT (GENERIC) ---
-        bow: "audio/Bow_Shot.mp3",                   // Was "Bow Shot.mp3"
+        // --- COMBAT ---
+        bow: "audio/Bow_Shot.mp3",
         explode: "audio/Explosion.mp3",
-        magic: "audio/Magic_Cast.mp3",               // Was "Magic Cast.mp3"
-        swing: "audio/Melee_Swing.mp3",              // Was "Melee Swing.mp3"
-        thud: "audio/thud_sound_effect.mp3",         // Was "thud sound effect.mp3"
-        hurt: "audio/Player_Hurt.mp3",               // Was "Player Hurt.mp3"
-
-        // --- SKILL SPECIFIC ---
-        grasp_cast: "audio/Abyssal_Cast.mp3",        // Was "Abyssal Cast.mp3"
-        grasp_hit: "audio/Abyssal_Hit.mp3",          // Was "Abyssal Hit.mp3"
+        magic: "audio/Magic_Cast.mp3",
+        swing: "audio/Melee_Swing.mp3",
+        thud: "audio/thud_sound_effect.mp3",
+        hurt: "audio/Player_Hurt.mp3",
+        grasp_cast: "audio/Abyssal_Cast.mp3",
+        grasp_hit: "audio/Abyssal_Hit.mp3",
         starfall: "audio/Starfall.mp3",
-        poison: "audio/Poison_Cloud.mp3",            // Was "Poison Cloud.mp3"
+        poison: "audio/Poison_Cloud.mp3",
         trap: "audio/Trap.mp3",
         shoot: "audio/Shoot.mp3",
         quake: "audio/Quake.mp3",
         tornado: "audio/Tornado.mp3",
-        wstomp: "audio/War_Stomp.mp3",               // Was "War Stomp.mp3"
+        wstomp: "audio/War_Stomp.mp3",
         heal: "audio/Heal.mp3", 
-        ice: "audio/Glacial_Spike.mp3",              // Was "Glacial Spike.mp3"
-        fairy: "audio/Fairy_Bomb.mp3",               // Was "Fairy Bomb.mp3"
+        ice: "audio/Glacial_Spike.mp3",
+        fairy: "audio/Fairy_Bomb.mp3",
         rush: "audio/Rush.mp3",
-        yaka_cast: "audio/Yaka_Cast.mp3",            // Was "Yaka Cast.mp3"
-        yaka_hit: "audio/Yaka_Hit.mp3",              // Was "Yaka Hit.mp3"
+        yaka_cast: "audio/Yaka_Cast.mp3",
+        yaka_hit: "audio/Yaka_Hit.mp3",
         arrow_storm: "audio/ArrowStorm.mp3",
         bash: "audio/Bash.mp3",
         thunder: "audio/Thunder.mp3" 
     },
-    play: function(key) {
-        if(!this.srcs[key]) return;
-        let a = new Audio(this.srcs[key]);
-        a.volume = 0.4;
-        a.play().catch(e=>{});
+
+    // 3. PRELOAD FUNCTION (Crucial for Speed)
+    init: function() {
+        for (let key in this.srcs) {
+            let a = new Audio(this.srcs[key]);
+            a.preload = 'auto'; // Tell browser to load it NOW
+            this.cache[key] = a;
+        }
     },
+
+    play: function(key) {
+        if(!this.cache[key]) return;
+        
+        // 4. CLONE NODE (Fastest way to play SFX without delay)
+        // This allows multiple sounds (like arrow hits) to overlap.
+        let sound = this.cache[key].cloneNode(); 
+        sound.volume = 0.4;
+        sound.play().catch(e=>{});
+    },
+
     playBGM: function(key) {
         if(this.currentBgmKey === key) return;
-        if(this.bgm) { this.bgm.pause(); this.bgm = null; }
-        if(!this.srcs[key]) return;
-        this.bgm = new Audio(this.srcs[key]);
+        
+        // Stop old BGM
+        if(this.bgm) { 
+            this.bgm.pause(); 
+            this.bgm.currentTime = 0; // Reset
+            this.bgm = null; 
+        }
+
+        if(!this.cache[key]) return;
+        
+        // Use the cached object
+        this.bgm = this.cache[key];
         this.bgm.loop = true;
         this.bgm.volume = 0.3;
-        this.bgm.play().catch(e=>{});
+        
+        // Try to play
+        let p = this.bgm.play();
+        if (p !== undefined) {
+            p.catch(error => {
+                // If blocked by browser policy, it will wait for the first click
+                console.log("BGM waiting for interaction...");
+            });
+        }
         this.currentBgmKey = key;
     }
 };
+
 // --- AUDIO ENGINE END ---
 
 
@@ -1821,7 +1872,9 @@ const QUESTS = [
     { type:'kill', txt: "Defeat Slime King (Grass)", target: "Slime King", lock:0 }, 
     { type:'collect', txt: "Gather 3 Herbs (Forest)", target: "Medic Herb", count:3, lock:1 },
     { type:'kill', txt: "Slay Scorpion King (Sand)", target: "Scorpion King", lock:2 },
-    { type:'activate', txt: "Read 3 Slogans (Ruins)", target: "Tablet", count:3, lock:3 },
+    // CHANGE THIS LINE:
+// Find QUESTS = [...]
+{ type:'activate', txt: "Polish 3 Angel Statues (Ruins)", target: "Angel Statue", count:3, lock:3 },
     // Make sure it says "Hydra"
 { type:'kill', txt: "Slay the Hydra (Swamp)", target: "Hydra", lock:4 }, 
     { type:'activate', txt: "Free 3 Frozen Friends (Snow)", target: "Frozen Friend", count:3, lock:5 },
@@ -2460,6 +2513,71 @@ function startNewGame(cls) {
 
 
 
+
+
+
+
+
+function spawnRegionFeatures(centerX, centerY, radius, type, configs, targetTerrain) {
+    configs.forEach(conf => {
+        let placed = 0;
+        let attempts = 0;
+        
+        while(placed < conf.count && attempts < 500) { 
+            attempts++;
+            
+            // Random Position
+            let rx = Math.floor(centerX - radius + Math.random() * (radius*2));
+            let ry = Math.floor(centerY - radius + Math.random() * (radius*2));
+            let size = conf.size;
+
+            let safe = true;
+
+            // 1. GLOBAL SAFETY: Don't block the Path to Region 8 (East)
+            // Region 7 center is x=25. Region 8 is to the East (Right).
+            // We forbid spawning anything past x=40 in the Lava zone.
+            if(targetTerrain === 7 && rx + size > 40) { // 7 is T.LAVA
+                 safe = false; 
+            }
+
+            if(safe) {
+                for(let y=ry; y<ry+size; y++) {
+                    for(let x=rx; x<rx+size; x++) {
+                        // Map Bounds
+                        if(x<0||y<0||x>=MAP_S||y>=MAP_S) { safe=false; break; }
+                        
+                        let t = S.map[y*MAP_S+x];
+
+                        // Terrain Match
+                        if(t !== targetTerrain) { safe=false; break; }
+
+                        // 2. BLOCK SAFETY: Never touch Letter Bricks or Roads
+                        if(t === 13) { safe=false; break; } // T.BLOCK (Letters)
+                        if(t === 9 || t === 10 || t === 11) { safe=false; break; } // ROAD, BRIDGE, LOCK
+                        if(t === 12) { safe=false; break; } // BEDROCK
+
+                        // 3. Entity Overlap
+                        for(let e of S.ents) {
+                            if(x >= e.x && x < e.x+e.w && y >= e.y && y < e.y+e.h) { safe=false; break; }
+                        }
+                        if(!safe) break;
+                    }
+                    if(!safe) break;
+                }
+            }
+
+            if(safe) {
+                addEnt('env', type, rx, ry, size, size);
+                placed++;
+            }
+        }
+    });
+}
+
+
+
+
+
 function unlockRegion9() {
     if (S.unlockedRegion9) return;
     S.unlockedRegion9 = true;
@@ -2655,11 +2773,43 @@ function genMap() {
     addBlockWords(42, 77, "A FRIEND FOR LIFE", "green");
     addBlockWords(40, 122, "STUDIO CLASSROOM", "gold");
 
+
+
+
+
     zones.forEach(z => { if(z.t !== T.GRASS) addEnt('struct', 'Healing Crystal', z.x-5, z.y+5); });
     addEnt('struct', 'TuckShop', 18, 28); 
     addEnt('struct', 'Fountain', 24, 24); 
     addEnt('struct', 'House', 16, 18); addEnt('struct', 'Church', 32, 18);
     addEnt('struct', 'House', 32, 28);
+
+
+
+
+
+// --- [FIX] SPAWN IMPRESSIVE FEATURES (Safe from text) ---
+    // Config: 1 Giant(6x6), 3 Huge(4x4), 1 Big(3x3), 5 Small(2x2)
+    const bigProps = [
+        {count:1, size:6}, 
+        {count:3, size:4}, 
+        {count:1, size:3}, 
+        {count:5, size:2}
+    ];
+
+    // Region 5: Swamp (75, 75) - Pass T.SWAMP
+    spawnRegionFeatures(75, 75, 16, 'big_mud', bigProps, T.SWAMP);
+
+    // Region 7: Lava (25, 125) - Pass T.LAVA
+    spawnRegionFeatures(25, 125, 16, 'lava_crater', bigProps, T.LAVA);
+    // -------------------------------------------------------
+
+
+
+
+
+
+
+
     
     for(let i=0; i<zones.length-1; i++) connect(zones[i], zones[i+1], i);
 
@@ -2689,9 +2839,24 @@ function genMap() {
         }
     }
 
-    addObj("Tablet", 120, 70, "Let's Talk in English"); 
-    addObj("Tablet", 130, 80, "Studio Classroom"); 
-    addObj("Tablet", 125, 75, "Heavenly Melody");
+   // --- REPLACE TABLETS WITH STATUES (TIGHT SANCTUARY LAYOUT) ---
+    // Center X is 125. We place them just slightly off-center so the path is open.
+    
+    // 1. Top Right (Altar) - Moved closer to center (129)
+    addObj("Angel Statue", 129, 64, "The Guardian of the East is restored."); 
+    
+    // 2. Middle Left - Moved closer (121)
+    addObj("Angel Statue", 121, 78, "The Guardian of the West shines bright."); 
+    
+    // 3. Middle Right - Moved closer (129)
+    addObj("Angel Statue", 129, 72, "The Southern Guardian awakes.");
+
+    // --- CLEANUP DEBRIS (Keep this) ---
+    S.ents = S.ents.filter(e => {
+        if(e.type !== 'env') return true; 
+        let tooClose = S.ents.some(statue => statue.name === 'Angel Statue' && Math.hypot(e.x - statue.x, e.y - statue.y) < 2.5);
+        return !tooClose;
+    });
 
     addMob("Slime King", 25, 35, true); 
     addMob("Scorpion King", 125, 25, true);
@@ -2730,7 +2895,7 @@ function genMap() {
     addNPC("Jussi", 28, 78, "Moi moi, this is nothing. Finland is warm.", 'M');
     addNPC("Mary", 25, 115, "Never regret—God has a plan for me, for you, for everyone.", 'F');
     addNPC("Mark", 28, 115, "Have you seen my adorable son, Levi?", 'M', -1);
-    addNPC("Jingle", 22, 115, "Welcome to Singapore!", 'F');
+     addNPC("Jingle", 22, 115, "Phew! Singapore is just as hot as a volcano!", 'F');
     addNPC("Corni", 46, 125, "こんにちは (konnichiwa)", 'M');
     addNPC("Bian Bain", 48, 125, "Do you know how to find Orion? Look for three bright stars in a line.", 'M');
     
@@ -2783,8 +2948,15 @@ function getEnv(t) {
     if(t===T.FOREST) return r<.6 ? 'tree_f' : 'stump';
     if(t===T.RUINS) return r<.5 ? 'rubble' : 'column';
     if(t===T.SAND) return r<.5 ? 'cactus' : 'rock';
+    
+  // [FIX] SWAMP: Only dead trees (Big mud is handled separately now)
     if(t===T.SWAMP) return 'dead_tree';
+    
     if(t===T.SNOW) return 'ice_crystal';
+    
+    // [FIX] LAVA: Only rocks (Big craters handled separately now)
+    if(t===T.LAVA) return 'magma_rock';
+    
     if(t===T.VOID) return 'void_shard';
     return 'rock';
 }
@@ -2802,17 +2974,27 @@ function getMob(t) {
     return null;
 }
 
-function addEnt(type, kind, x, y) { 
-    let w=1, h=1; 
-    if(kind==='Fountain'){w=3;h=3;} 
-    if(kind==='House'){w=4;h=4;}
-    if(kind==='FarmHouse'){w=6;h=5;}
-    if(kind==='TuckShop'){w=5;h=4;}
-    if(kind==='Church'){w=5;h=6;}
-    if(kind==='Healing Crystal'){w=2;h=2;}
-    if(['tree_g','tree_f','column','cactus','dead_tree','ice_crystal','void_shard'].includes(kind)) h=1.5;
+// [FIX] Updated to accept custom width/height (w, h) arguments
+function addEnt(type, kind, x, y, w, h) { 
+    // Default sizes if w/h are not provided
+    if(!w) w=1; 
+    if(!h) h=1; 
+
+    // Legacy overrides (only used if w/h are not passed)
+    if(arguments.length < 5) {
+        if(kind==='Fountain'){w=3;h=3;} 
+        if(kind==='House'){w=4;h=4;}
+        if(kind==='FarmHouse'){w=6;h=5;}
+        if(kind==='TuckShop'){w=5;h=4;}
+        if(kind==='Church'){w=5;h=6;}
+        if(kind==='Healing Crystal'){w=2;h=2;}
+        if(['tree_g','tree_f','column','cactus','dead_tree','ice_crystal','void_shard'].includes(kind)) h=1.5;
+    }
+
     S.ents.push({type, kind, x, y, w, h}); 
 }
+
+
 function addMob(name, x, y, boss=false) {
     let hp = 250, dmg = 15; 
     let w=1, h=1;
@@ -2830,6 +3012,9 @@ function addMob(name, x, y, boss=false) {
     S.ents.push({type:'mob', name, x, y, w, h, hp, maxHp:hp, dmg, boss, aggro:0, status:{}});
 }
 
+
+
+
 function addBlockWords(x, y, txt, theme) {
     for(let i=0; i<txt.length; i++) {
         let idx = y*MAP_S + (x+i);
@@ -2846,7 +3031,35 @@ function addObj(name, x, y, msg) {
     S.ents.push({type:'obj', name, x, y, msg, active:false, w:size, h:size}); 
 }
 
-function loop() { if(S.run) { try{update(); draw();}catch(e){ console.error(e); } requestAnimationFrame(loop); } }
+// --- FPS FIX START ---
+let lastTime = 0;
+const fpsInterval = 1000 / 60; // Target 60 FPS
+
+function loop(timestamp) {
+    // 1. Keep requesting frames
+    if(S.run) requestAnimationFrame(loop);
+
+    // 2. Handle first run
+    if (!timestamp) timestamp = performance.now();
+
+    // 3. Calculate time elapsed
+    const elapsed = timestamp - lastTime;
+
+    // 4. Limit to 60 FPS
+    if (elapsed > fpsInterval) {
+        lastTime = timestamp - (elapsed % fpsInterval);
+
+        // --- THIS IS WHERE YOUR ERROR WAS ---
+        try {
+            update(); 
+            draw();
+        } catch(e) {            // You were missing this line
+            console.error(e);   // And this line
+        }                       // And this line
+    }
+}
+// --- FPS FIX END ---
+// --- FPS FIX END ---
 
 
 
@@ -2876,10 +3089,7 @@ function update() {
             if(fs) fs.disabled = false; 
 
            updateUI();
-            showChat("SYSTEM", "Entering Farm Mode");
-            S.audio.play('tele');
-            S.audio.playBGM('farm_day');
-        }
+                   }
    } else {
             // === RETURNING TO MAIN WORLD ===
             if(S.world === 'farm') {
@@ -2891,12 +3101,7 @@ function update() {
                 // [FIX] STOP RESETTING THE WORLD
                 // We removed genMap(), so dead mobs stay dead and the map stays persistent.
 
-                // 1. SAVE Y POSITION (To prevent jumping)
-                let exitY = S.p.y;
-
-                // 2. FIX POSITION
-                p.x = 107;      // Place outside the trigger
-                p.y = exitY;    // Keep vertical position
+               
 
 
 
@@ -2905,8 +3110,7 @@ function update() {
                 // ---------------------------
 
                 updateUI();
-                showChat("SYSTEM", "Leaving Farm...");
-                S.audio.play('tele');
+                
                 
                 // Play NEW song if boss is dead, otherwise play OLD song
                 S.audio.playBGM(S.bossDead ? 'adventure_new' : 'adventure');
@@ -2920,17 +3124,27 @@ function update() {
     // --- 2. DELEGATE TO FARM ---
     if (S.world === 'farm') {
         
-        // [NEW] DYNAMIC UI SWITCH (FIXED)
-        // Check if we just crossed the gate line (118)
-        // We now check 'farm-ui-layer' because 'farm-stats' was deleted
+        // ... (Existing UI switching logic) ...
         let uiLayer = document.getElementById('farm-ui-layer');
         let isFarmUI = (uiLayer && uiLayer.style.display === 'block');
         let shouldBeFarmUI = (S.p.x > 118);
+        if (isFarmUI !== shouldBeFarmUI) updateUI();
 
-        // If the current UI doesn't match where we are standing, update it!
-        if (isFarmUI !== shouldBeFarmUI) {
-            updateUI();
+
+// --- [FIX] BGM SYNC AT GATE (118) ---
+        // 1. If inside Farm (x > 118): Play Farm Music
+        if (S.p.x > 118) {
+            let track = (S.farm.time >= 360 && S.farm.time < 1140) ? 'farm_day' : 'farm_night';
+            S.audio.playBGM(track);
+        } 
+        // 2. If on Driveway (x <= 118): Keep/Play Adventure Music
+        else {
+            S.audio.playBGM(S.bossDead ? 'adventure_new' : 'adventure');
         }
+        // ------------------------------------
+
+
+
 
         if (farmSys) farmSys.update();
         else if (typeof Region9Farm !== 'undefined') Region9Farm.update();
@@ -2938,6 +3152,44 @@ function update() {
         let timeIcon = document.getElementById('time-icon');
         if(timeIcon) timeIcon.innerText = (S.farm.time > 360 && S.farm.time < 1140) ? '☀️' : '🌙';
         
+        // --- [FIX] BRIDGE TEXT RESTORATION ---
+        // While on the driveway (108 < x <= 118), keep the ORIGINAL RPG text.
+        if (S.p.x <= 118) {
+            let q = QUESTS[S.qStep];
+            let qBox = document.getElementById('quest-txt');
+            let qTitle = document.getElementById('quest-panel');
+
+            if (qBox && qTitle) {
+                // 1. Reset Title
+                if(qTitle.children[0]) qTitle.children[0].innerText = "CURRENT MISSION";
+                
+                // 2. Exact Logic from Main World
+                if(q) {
+                    let prog = (q.type==='collect'||q.type==='activate') ? ` (${S.qProg}/${q.count})` : '';
+                    qBox.innerText = q.txt + prog;
+                    qBox.style.color = "#eee";
+                } 
+                // 3. RESTORE THE ORIGINAL "SURPRISE" HTML LAYOUT
+                else if (S.bossDead && !S.epilogueSeen) {
+                    qBox.innerHTML = `
+                        <div style='color:#fff; font-size:22px; border-bottom:1px solid #444; margin-bottom:5px;'>East ➔ Farm</div>
+                        
+                        <div style='display:flex; align-items:center; justify-content:center; gap:5px;'>
+                            <div style='font-size:65px; color:#00e676; line-height:1.0;'>↩</div>
+                            <div style='text-align:left; display:flex; flex-direction:column;'>
+                                <span style='color:#00e676; font-size:22px; font-weight:bold; line-height:0.9;'>RETURN<br>TO</span>
+                                <span style='color:#ff1744; font-size:26px; font-weight:bold; line-height:0.9; margin-top:2px; text-shadow:2px 2px 0 #000;'>STARTING<br>VILLAGE</span>
+                            </div>
+                        </div>
+                        <div style='margin-top:8px; padding-top:4px; border-top:1px dashed #555; color:#ffd700; font-size:24px; font-weight:bold; text-shadow:1px 1px 0 #000;'>
+                            🎁 SURPRISE **
+                        </div>
+                    `;
+                }
+            }
+        }
+        // ------------------------------
+
         return; 
     }
 
@@ -2978,8 +3230,21 @@ function update() {
 
 
 
-// AUDIO: Walking / Horse
-        if(now % 25 === 0) S.audio.play(S.p.isRiding ? 'horse' : 'step');
+// NEW ROBUST AUDIO TIMER
+        // 1. Initialize timer if missing
+        if(!p.stepTimer) p.stepTimer = 0;
+        
+        // 2. Count frames
+        p.stepTimer++;
+        
+        // 3. Play sound every 20 frames (approx 0.3 seconds)
+        if(p.stepTimer > 20) {
+            S.audio.play(S.p.isRiding ? 'horse' : 'step');
+            p.stepTimer = 0;
+        }
+
+    } else {
+        S.p.stepTimer = 20; // Ready to play immediately on next move
     }
 
 
@@ -3494,15 +3759,56 @@ function solid(x, y, excludeEnt=null) {
         if(e === excludeEnt) continue; 
         
         if(e.type==='struct') {
-            // FIX: Allow walking through Fountain AND Crystals
+            // 1. Walk through Fountain/Crystals
             if (e.kind === 'Healing Crystal' || e.kind === 'Fountain') continue;
 
+            // 2. CHURCH FIX: Lower the wall further
+            // Changed "+ 3" to "+ 4". Now only the bottom 2 rows are solid.
+            if (e.kind === 'Church') {
+                if(x >= e.x && x < e.x+e.w && y >= e.y + 4 && y < e.y+e.h) return true;
+                continue; 
+            }
+
+            // 3. Standard Collision
             if(x >= e.x && x < e.x+e.w && y >= e.y && y < e.y+e.h) return true;
         }
-        else if(e.type==='obj' && e.name==='Tablet') {
-            if(x >= e.x && x < e.x+e.w && y >= e.y && y < e.y+e.h) return true;
+        // CHANGE THIS LINE (Remove && e.name==='Tablet')
+       // CORRECT: Check ALL objects, then check names inside
+        else if(e.type==='obj') { 
+            
+            // 1. ANGEL STATUE (Wide Wing Collision)
+            if(e.name === 'Angel Statue') {
+                // VISUAL FIX:
+                // The wings extend sideways, so we widen the box.
+                // X: Start -0.5 tiles to the left, End +1.5 tiles to the right.
+                //    (Total width = 2 tiles)
+                // Y: Standard height.
+                if(x >= e.x - 0.5 && x < e.x + 1.5 && 
+                   y >= e.y && y < e.y + 1) {
+                    return true;
+                }
+            }
+
+            // 2. TABLET COLLISION (Backup)
+            else if(e.name === 'Tablet') {
+                if(x >= e.x && x < e.x+e.w && y >= e.y && y < e.y+e.h) return true;
+            }
         }
         else if(e.type==='env') {
+
+
+// 1. ALLOW WALKING THROUGH MUD (Add this line)
+            if(e.kind === 'big_mud') continue; 
+
+            // 2. BLOCK VOLCANOES (Remove big_mud from here)
+            if(e.kind === 'lava_crater') {
+                if(x >= e.x + 0.2 && x < e.x + e.w - 0.2 && 
+                   y >= e.y + 0.2 && y < e.y + e.h - 0.2) {
+                    return true;
+                }
+            }
+
+           
             if(e.kind==='Fence') { if(Math.abs(e.x-x)<0.5 && Math.abs(e.y-y)<0.5) return true; }
             else if(['flower','mushroom','pebble'].includes(e.kind)) continue;
             else if(Math.round(e.x) === Math.floor(x) && Math.round(e.y) === Math.floor(y)) return true;
@@ -3976,54 +4282,51 @@ if(s.spike) {
         else if(p.dir===2) faceAng = Math.PI/2; 
         else faceAng = Math.PI;             
 
-        let coneWidth = 0.7; // ~40 degrees wide
+        let coneWidth = 0.7; 
 
-        // 2. Spawn Visuals: "The Elsa Wave"
-        // We divide the range into 6 concentric rows (waves)
-        let rows = 6;
+        // OPTIMIZATION: Reduce rows from 6 to 5 (Saves ~15 spikes)
+        let rows = 5; 
         
         for(let r=1; r<=rows; r++) {
-            // A. Calculate Distance for this row
-            let distRatio = r / rows; // 0.16 -> 1.0
+            let distRatio = r / rows; 
             let currentDist = distRatio * s.range;
             
-            // B. Calculate Timing (Further = Later)
-            let waveDelay = (r-1) * 60; // 0ms, 60ms, 120ms... (The Ripple)
+            // OPTIMIZATION: Increase delay spread so calculations don't happen all at once
+            let waveDelay = (r-1) * 70; 
 
-            // C. Calculate Size (Further = Bigger)
-            // Near: 0.7x, Far: 2.5x
             let size = 0.7 + (distRatio * 1.8);
 
-            // D. How many spikes in this row? (More space = More spikes)
-            let spikeCount = 2 + Math.ceil(r * 1.2); 
+            // OPTIMIZATION: Cap max spikes per row to 6
+            let rawCount = 2 + Math.ceil(r * 1.2);
+            let spikeCount = rawCount > 6 ? 6 : rawCount;
 
             for(let i=0; i<spikeCount; i++) {
                 setTimeout(() => {
-                    // Spread spikes evenly across the cone arc
-                    // Map 'i' to a value between -0.5 and 0.5
                     let arcPos = (spikeCount === 1) ? 0 : (i / (spikeCount-1)) - 0.5;
-                    
-                    // Add slight random jitter so it looks organic, not robotic
                     let angle = faceAng + (arcPos * coneWidth * 2) + (Math.random()*0.15 - 0.075);
                     
+                    let sx = p.x + Math.cos(angle) * currentDist;
+                    let sy = p.y + Math.sin(angle) * currentDist;
+
                     S.vfxs.push({
                         type: 'glacial_spike',
-                        x: p.x + Math.cos(angle) * currentDist,
-                        y: p.y + Math.sin(angle) * currentDist,
+                        x: sx,
+                        y: sy,
                         life: 80,       
                         maxLife: 80,
                         scale: size     
                     });
                     
-                    // Add cold mist at the base
-                    part(p.x + Math.cos(angle)*currentDist, p.y + Math.sin(angle)*currentDist, '#e0f7fa', 2, 3 + size*2, 'cloud');
+                    // OPTIMIZATION: Only spawn mist 30% of the time (Massive FPS Boost)
+                    if(Math.random() < 0.3) {
+                        part(sx, sy, '#e0f7fa', 1, 3 + size*2, 'cloud');
+                    }
 
-                }, waveDelay + Math.random()*20); // Add small random delay to soften the row
+                }, waveDelay + Math.random()*20); 
             }
         }
 
-        // 3. Hit Logic (Instant Hit Check)
-        // We hit everything in the cone immediately so you don't miss moving targets
+        // 3. Hit Logic (Remains Instant)
         S.ents.forEach(m => {
             if(m.type !== 'mob' || m.dead) return;
             
@@ -4036,19 +4339,17 @@ if(s.spike) {
             while(diff < -Math.PI) diff += Math.PI*2;
             while(diff > Math.PI) diff -= Math.PI*2;
 
-            // Hit Cone check
             if(dist < s.range && Math.abs(diff) < coneWidth + 0.2) { 
                 m.status.freeze = Date.now() + s.freeze;
-                hit(m, s.dmg, { knock: 4.0 }); // High knockback (Push them away with the ice)
+                hit(m, s.dmg, { knock: 4.0 }); 
                 
-                // Add shatter effect on mob
-                part(m.x, m.y, '#00e5ff', 10, 4);
+                // Only spawn 3 shards on hit instead of 10
+                part(m.x, m.y, '#00e5ff', 3, 4);
                 popText(m.x, m.y, "FROZEN", "#00e5ff", true, true);
             }
         });
         return;
     }
-
 
 
 
@@ -4581,14 +4882,135 @@ function eggTitle() {
         let t = S.map[y*MAP_S+x];
         let px = Math.floor(x*TILE-S.cam.x+sx), py = Math.floor(y*TILE-S.cam.y+sy);
         
-        ctx.fillStyle = Object.values(C)[t];
-        if(t===T.LOCK) ctx.fillStyle = `rgba(200,0,0,${0.7+Math.sin(Date.now()/200)*0.3})`;
-        ctx.fillRect(px, py, TILE, TILE);
+
+
+
+
+// --- 1. SETUP RANDOM MATH (For textures) ---
+        let seed = Math.abs(Math.sin(x * 12.9898 + y * 78.233));
+        let r1 = (seed * 100) % 1;
+        let r2 = (seed * 200) % 1;
+        let r3 = (seed * 300) % 1;
+        let r4 = (seed * 400) % 1;
+
+        // --- 2. BASE COLORS ---
+        // Use rich brown for roads, default colors for others
+        if(t === T.BRIDGE || t === T.ROAD) ctx.fillStyle = '#5d4037'; 
+        else ctx.fillStyle = Object.values(C)[t];
         
+        if(t === T.LOCK) ctx.fillStyle = `rgba(200,0,0,${0.7+Math.sin(Date.now()/200)*0.3})`;
+        
+        ctx.fillRect(px, py, TILE, TILE);
+
+        // --- 3. FARM DELEGATION ---
+        if(S.world === 'farm' && farmSys) farmSys.draw(ctx, S.cam.x, S.cam.y);
+
+        // --- 4. APPLY DETAILED TEXTURES ---
+        
+        // A. ROAD/BRIDGE (Gravel)
+        if(t === T.BRIDGE || t === T.ROAD) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.18)'; 
+            ctx.fillRect(px + (r1 * (TILE-3)), py + (r2 * (TILE-3)), 3, 3);
+            ctx.fillRect(px + (r3 * (TILE-3)), py + (r4 * (TILE-3)), 3, 3);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; 
+            ctx.fillRect(px + (r2 * (TILE-2)), py + (r3 * (TILE-2)), 2, 2);
+            ctx.fillRect(px + (r4 * (TILE-2)), py + (r1 * (TILE-2)), 2, 2);
+        }
+        // B. GRASS (Lush)
+        else if(t === T.GRASS) {
+            ctx.fillStyle = 'rgba(0, 60, 0, 0.15)'; 
+            ctx.fillRect(px + (r1 * (TILE-3)), py + (r2 * (TILE-3)), 3, 3);
+            ctx.fillStyle = 'rgba(200, 255, 100, 0.15)'; 
+            ctx.fillRect(px + (r2 * (TILE-2)), py + (r3 * (TILE-2)), 2, 2);
+        }
+        // C. FOREST (Deep)
+        else if(t === T.FOREST) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'; 
+            ctx.fillRect(px + (r1 * (TILE-3)), py + (r2 * (TILE-3)), 3, 3);
+            ctx.fillRect(px + (r3 * (TILE-3)), py + (r4 * (TILE-3)), 3, 3);
+        }
+        // D. SAND (Dunes)
+        else if(t === T.SAND) {
+            ctx.fillStyle = 'rgba(200, 100, 0, 0.2)'; 
+            ctx.fillRect(px + (r1 * (TILE-2)), py + (r2 * (TILE-2)), 2, 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'; 
+            ctx.fillRect(px + (r2 * (TILE-2)), py + (r3 * (TILE-2)), 2, 2);
+        }
+        // E. RUINS (Cracked)
+        else if(t === T.RUINS) {
+            ctx.strokeStyle = '#555'; ctx.lineWidth = 2;
+            ctx.strokeRect(px+2, py+2, 46, 46); 
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; 
+            ctx.fillRect(px + (r1 * (TILE-4)), py + (r2 * (TILE-4)), 4, 4);
+        }
+        // F. SNOW (Sparkle)
+        else if(t === T.SNOW) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; 
+            ctx.fillRect(px + (r1 * (TILE-2)), py + (r2 * (TILE-2)), 2, 2);
+        }
+        // G. SWAMP (Murky)
+        else if(t === T.SWAMP) {
+             ctx.fillStyle = 'rgba(50, 60, 0, 0.3)'; 
+             ctx.fillRect(px + (r1 * (TILE-4)), py + (r2 * (TILE-4)), 4, 4);
+             ctx.fillStyle = 'rgba(0, 0, 0, 0.2)'; 
+             ctx.fillRect(px + (r3 * (TILE-3)), py + (r4 * (TILE-3)), 3, 3);
+        }
+        // --- [FIX] ADD MISSING REGION 7 & 8 TEXTURES ---
+        
+        // H. LAVA (Cracked Magma Crust)
+        else if(t === T.LAVA) {
+             // 1. Cooling Crust (Darker patches)
+             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; 
+             ctx.fillRect(px + (r1 * (TILE-6)), py + (r2 * (TILE-6)), 6, 6);
+             
+             // 2. Molten Cracks (Bright Orange/Red)
+             ctx.fillStyle = 'rgba(255, 87, 34, 0.4)'; 
+             ctx.fillRect(px + (r2 * (TILE-3)), py + (r3 * (TILE-3)), 3, 3);
+             
+             // 3. Heat Bubbles (Yellow)
+             ctx.fillStyle = 'rgba(255, 235, 59, 0.5)'; 
+             ctx.fillRect(px + (r4 * (TILE-2)), py + (r1 * (TILE-2)), 2, 2);
+        }
+
+        // I. VOID (Cosmic Space Floor)
+        else if(t === T.VOID) {
+             // 1. Nebula Clouds (Purple)
+             ctx.fillStyle = 'rgba(123, 31, 162, 0.2)'; 
+             ctx.fillRect(px + (r1 * (TILE-5)), py + (r2 * (TILE-5)), 5, 5);
+             
+             // 2. Distant Stars (White/Blue)
+             ctx.fillStyle = 'rgba(224, 247, 250, 0.4)'; 
+             ctx.fillRect(px + (r3 * (TILE-2)), py + (r4 * (TILE-2)), 2, 2);
+             
+             // 3. Void Grid/Glitch (Darker)
+             ctx.fillStyle = 'rgba(0, 0, 0, 0.3)'; 
+             ctx.fillRect(px + (r2 * (TILE-8)), py + (r3 * (TILE-8)), 2, 8);
+        }
+        // -----------------------------------------------
+
+        // J. BEDROCK
+        else if(t === T.BEDROCK) {
+            ctx.fillStyle = '#111'; ctx.fillRect(px, py, TILE, TILE);
+        }
+        
+
+
+
+
+
+
+
         // --- FARM DRAW DELEGATION (Plots, Fences, Debris) ---
         if(S.world === 'farm' && farmSys) {
              farmSys.draw(ctx, S.cam.x, S.cam.y);
         }
+
+
+
+
+
+
+
         
         if(t===T.BLOCK && S.wordData[y*MAP_S+x]) {
              let e = S.wordData[y*MAP_S+x];
@@ -4607,19 +5029,36 @@ function eggTitle() {
              ctx.font = 'bold 30px monospace'; 
              ctx.fillStyle = cTxt; ctx.textAlign='center'; 
              ctx.fillText(e.char, px+25, py+35);
+
+
+
+
              ctx.textAlign='left';
         }
         
-        if(t===T.ROAD) { 
-            ctx.fillStyle='#607d8b'; ctx.fillRect(px, py, TILE, TILE); 
-        }
+            }
 
-        ctx.fillStyle='rgba(0,0,0,0.1)';
-        if(t===T.GRASS && (x+y)%3==0) ctx.fillRect(px+10, py+10, 6, 6);
-        if(t===T.SAND && (x*y)%5==0) ctx.fillRect(px+20, py+30, 4, 4);
-        if(t===T.RUINS) { ctx.strokeStyle='#555'; ctx.strokeRect(px+2, py+2, 46, 46); }
-        if(t===T.BEDROCK) ctx.fillRect(px, py, TILE, TILE);
-    }
+
+// ============================================================
+    // STEP 1: DRAW SWAMP MUD HERE (So it is the bottom layer)
+    // ============================================================
+    S.ents.forEach(e => {
+        if(e.kind === 'big_mud') {
+            let x = Math.floor(e.x*TILE - S.cam.x + sx);
+            let y = Math.floor(e.y*TILE - S.cam.y + sy);
+            // Only draw if visible on screen
+            if(x > -300 && x < cvs.width+200 && y > -300 && y < cvs.height+200) {
+                drawEnv(x, y, e.kind, e);
+            }
+        }
+    });
+    // ============================================================
+
+
+
+
+
+
     
 
 
@@ -4890,93 +5329,7 @@ function eggTitle() {
             ctx.shadowBlur = 0;
         }
         
-        if(e.type === 'tornado') {
-             let px = Math.floor(e.x*TILE - S.cam.x + sx);
-             let py = Math.floor(e.y*TILE - S.cam.y + sy);
-             
-             // Smooth fade out
-             let alpha = e.life < 20 ? e.life / 20 : 1.0;
-
-             ctx.save();
-             ctx.translate(px+25, py+40); 
-             ctx.scale(e.scale, e.scale); // Uses the updated large scale
-             ctx.globalAlpha = alpha;
-
-             let time = Date.now() / 40; 
-
-             // --- LAYER 1: THE CORE (Gradient Funnel) ---
-             // No more stacked rings. One solid shape.
-             let grd = ctx.createLinearGradient(-15, -80, 15, 0);
-             grd.addColorStop(0, "rgba(200, 230, 255, 0.1)"); // Top (Transparent)
-             grd.addColorStop(0.5, "rgba(180, 210, 230, 0.6)"); // Mid (Thick)
-             grd.addColorStop(1, "rgba(100, 130, 150, 0.2)"); // Bottom (Dusty)
-
-             ctx.fillStyle = grd;
-             ctx.beginPath();
-             ctx.moveTo(-25, -90); // Top Left (Wide)
-             ctx.quadraticCurveTo(0, -40, -5, 0); // Curve to bottom
-             ctx.lineTo(5, 0);
-             ctx.quadraticCurveTo(0, -40, 25, -90); // Top Right (Wide)
-             ctx.closePath();
-             ctx.fill();
-
-             // --- LAYER 2: THE WIND STREAKS (Fast Spinning Lines) ---
-             // Draw curved lines wrapping around the funnel
-             ctx.lineWidth = 3;
-             ctx.lineCap = 'round';
-             
-             for(let i=0; i<6; i++) {
-                 // Calculate a "height" for this streak
-                 let h = (time * 2 + i * 20) % 90; // Moves UP the tornado
-                 let yPos = -h;
-                 
-                 // Width depends on height (Wider at top)
-                 let w = 8 + (h * 0.3);
-                 
-                 // Sine wave for X to simulate 3D rotation
-                 let rot = time * 0.5 + i;
-                 let xOff = Math.sin(rot) * w;
-                 let zDepth = Math.cos(rot); // Is it in front or behind?
-
-                 // Only draw if "in front" (simple 3D effect) or transparent
-                 ctx.strokeStyle = `rgba(255, 255, 255, ${0.4 + zDepth*0.3})`; // Brighter when in front
-                 
-                 ctx.beginPath();
-                 ctx.moveTo(xOff - 5, yPos); 
-                 ctx.quadraticCurveTo(xOff, yPos - 2, xOff + 5, yPos);
-                 ctx.stroke();
-             }
-
-             // --- LAYER 3: DEBRIS (Rocks & Dust) ---
-             if(e.debris) {
-                 e.debris.forEach(d => {
-                     let dAng = d.angle + time * d.speed;
-                     
-                     // 3D Orbit Logic
-                     let rx = Math.cos(dAng) * d.dist;
-                     let ry = Math.sin(dAng) * (d.dist * 0.3) - d.yOff; // Elliptical & Vertical spread
-                     
-                     // Z-Index Sorting (Simple):
-                     // If moving "back" (sin > 0), draw dark. If "front", draw light.
-                     let isFront = Math.sin(dAng) > 0;
-                     
-                     ctx.fillStyle = isFront ? '#795548' : '#3e2723';
-                     
-                     ctx.beginPath();
-                     ctx.arc(rx, ry, d.size, 0, 6.28);
-                     ctx.fill();
-                 });
-             }
-             
-             // --- LAYER 4: GROUND DUST ---
-             ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
-             ctx.beginPath();
-             ctx.ellipse(0, 0, 20 + Math.sin(time)*5, 8, 0, 0, 6.28);
-             ctx.fill();
-
-             ctx.restore();
-             ctx.globalAlpha = 1.0;
-        }
+       
 
 
 
@@ -5083,35 +5436,200 @@ if(p.type==='bubble') {
         ctx.globalAlpha = 1;
         if(p.life<=0) p.dead = true;
     });
-    S.parts = S.parts.filter(p => !p.dead);
+   S.parts = S.parts.filter(p => !p.dead);
     // MANDATORY FIX: Cap particles to prevent crash
     if(S.parts.length > 500) S.parts.splice(0, 50);
 
-    let list = [...S.ents];
+    // ============================================================
+    // STEP 2: DEFINE THE LIST (Filter out the Mud!)
+    // ============================================================
+    
+    // 1. Create list, but EXCLUDE 'big_mud' (because we drew it earlier)
+    let list = S.ents.filter(e => e.kind !== 'big_mud');
+
+    // 2. Add the Player to the list ONE TIME
     if(S.p.class) list.push({type:'p', x:S.p.x, y:S.p.y, h:1});
 
-
-
-
-
-
-
-
-
+    // ============================================================
     
+    // 1. TOP BUN (Keep this line)
     list = list.filter(e => !e.dead && e.type!=='zone' && e.type!=='web' && e.type!=='vfx_proj' && e.type!=='tile_block');
     
-    list.sort((a,b) => (a.y + (a.h||1)) - (b.y + (b.h||1)));
+    // --- [PASTE THIS NEW BLOCK HERE] ---
+    
+    // Check House status first (needed for sorting)
+    let house = S.ents.find(e => e.kind === 'FarmHouse');
+    let isInside = house && xIn(house, S.p.x, S.p.y);
+
+    // --- SORTING LOGIC (Depth Buffer) ---
+    // Decides what draws in front of what
+    // --- SORTING LOGIC (Depth Buffer) ---
+    // --- SORTING LOGIC (Depth Buffer) ---
+    list.sort((a,b) => {
+        let getDepth = (e) => {
+            // 1. TORNADO: Always on top (Flying)
+            if (e.type === 'tornado') return e.y + 5000; 
+
+            // 2. SWAMP (Mud): Always on bottom
+            if (e.kind === 'big_mud') return -9999; 
+
+            // 3. FarmHouse inside check
+            if (e.kind === 'FarmHouse') return isInside ? -10000 : (e.y + e.h);
+
+            // 4. PLAYER (Feet Position)
+            if (e.type === 'p') return e.y + 0.95;
+
+            // 5. ENVIRONMENT FIX (Trees, Flowers, Rocks)
+            // Use a fixed offset (0.85) instead of 'e.h'.
+            // This ensures that if Player (0.95) and Tree (0.85) are on the same Y,
+            // the Player (0.95) draws LAST (On Top).
+            if (e.type === 'env') {
+                // Exception: The Volcano needs to be sorted by its bottom because it's huge
+                if (e.kind === 'lava_crater') return e.y + e.h - 0.2;
+                
+                // Standard Trees/Rocks: Sort by base of the tile
+                return e.y + 0.85; 
+            }
+
+            // 6. Projectiles (Fly over small things)
+            if (e.type === 'proj') return e.y + 0.8;
+
+            // Default: Sort by bottom of the entity
+            return e.y + (e.h||1);
+        };
+        return getDepth(a) - getDepth(b);
+    });
+
+
+
+
+    // -----------------------------------
+
+    // 2. BOTTOM BUN (Keep this line)
+   
 
     list.forEach(e => {
         try {
             let x = Math.floor(e.x*TILE - S.cam.x + sx), y = Math.floor(e.y*TILE - S.cam.y + sy);
             if(x<-300 || x>cvs.width+200 || y<-300 || y>cvs.height+200) return;
 
-            if(e.type==='env') drawEnv(x,y,e.kind); 
+
+
+/////////////
+
+
+
+
+/////////////
+
+
+            // Add ", e" at the end so the function knows the size!
+if(e.type==='env') drawEnv(x, y, e.kind, e);
             else if(e.type==='struct') drawStruct(x,y,e);
             else if(e.type==='p') drawHero(x,y);
             else if(e.type==='mob') drawMob(x,y,e);
+
+
+
+
+
+
+
+
+ if(e.type === 'tornado') {
+             let px = Math.floor(e.x*TILE - S.cam.x + sx);
+             let py = Math.floor(e.y*TILE - S.cam.y + sy);
+             
+             // Smooth fade out
+             let alpha = e.life < 20 ? e.life / 20 : 1.0;
+
+             ctx.save();
+             ctx.translate(px+25, py+40); 
+             ctx.scale(e.scale, e.scale); // Uses the updated large scale
+             ctx.globalAlpha = alpha;
+
+             let time = Date.now() / 40; 
+
+             // --- LAYER 1: THE CORE (Gradient Funnel) ---
+             // No more stacked rings. One solid shape.
+             let grd = ctx.createLinearGradient(-15, -80, 15, 0);
+             grd.addColorStop(0, "rgba(200, 230, 255, 0.1)"); // Top (Transparent)
+             grd.addColorStop(0.5, "rgba(180, 210, 230, 0.6)"); // Mid (Thick)
+             grd.addColorStop(1, "rgba(100, 130, 150, 0.2)"); // Bottom (Dusty)
+
+             ctx.fillStyle = grd;
+             ctx.beginPath();
+             ctx.moveTo(-25, -90); // Top Left (Wide)
+             ctx.quadraticCurveTo(0, -40, -5, 0); // Curve to bottom
+             ctx.lineTo(5, 0);
+             ctx.quadraticCurveTo(0, -40, 25, -90); // Top Right (Wide)
+             ctx.closePath();
+             ctx.fill();
+
+             // --- LAYER 2: THE WIND STREAKS (Fast Spinning Lines) ---
+             // Draw curved lines wrapping around the funnel
+             ctx.lineWidth = 3;
+             ctx.lineCap = 'round';
+             
+             for(let i=0; i<6; i++) {
+                 // Calculate a "height" for this streak
+                 let h = (time * 2 + i * 20) % 90; // Moves UP the tornado
+                 let yPos = -h;
+                 
+                 // Width depends on height (Wider at top)
+                 let w = 8 + (h * 0.3);
+                 
+                 // Sine wave for X to simulate 3D rotation
+                 let rot = time * 0.5 + i;
+                 let xOff = Math.sin(rot) * w;
+                 let zDepth = Math.cos(rot); // Is it in front or behind?
+
+                 // Only draw if "in front" (simple 3D effect) or transparent
+                 ctx.strokeStyle = `rgba(255, 255, 255, ${0.4 + zDepth*0.3})`; // Brighter when in front
+                 
+                 ctx.beginPath();
+                 ctx.moveTo(xOff - 5, yPos); 
+                 ctx.quadraticCurveTo(xOff, yPos - 2, xOff + 5, yPos);
+                 ctx.stroke();
+             }
+
+             // --- LAYER 3: DEBRIS (Rocks & Dust) ---
+             if(e.debris) {
+                 e.debris.forEach(d => {
+                     let dAng = d.angle + time * d.speed;
+                     
+                     // 3D Orbit Logic
+                     let rx = Math.cos(dAng) * d.dist;
+                     let ry = Math.sin(dAng) * (d.dist * 0.3) - d.yOff; // Elliptical & Vertical spread
+                     
+                     // Z-Index Sorting (Simple):
+                     // If moving "back" (sin > 0), draw dark. If "front", draw light.
+                     let isFront = Math.sin(dAng) > 0;
+                     
+                     ctx.fillStyle = isFront ? '#795548' : '#3e2723';
+                     
+                     ctx.beginPath();
+                     ctx.arc(rx, ry, d.size, 0, 6.28);
+                     ctx.fill();
+                 });
+             }
+             
+             // --- LAYER 4: GROUND DUST ---
+             ctx.fillStyle = 'rgba(100, 100, 100, 0.3)';
+             ctx.beginPath();
+             ctx.ellipse(0, 0, 20 + Math.sin(time)*5, 8, 0, 0, 6.28);
+             ctx.fill();
+
+             ctx.restore();
+             ctx.globalAlpha = 1.0;
+        }
+
+
+
+
+
+
+
 
 
 
@@ -5252,29 +5770,181 @@ else if(e.type === 'shadow_hand') {
                  ctx.fillText(e.name.includes('Herb')?'🌿':'📜', x+10, y+35+b); 
                  ctx.shadowBlur=0;
             }
+
+
+
             else if(e.type==='obj') {
-                ctx.fillStyle = e.active ? '#0ff' : '#666';
-                if(e.name==='Tablet') {
-                     let baseC = e.active ? '#f1c40f' : '#555';
-                     let innerC = e.active ? '#f39c12' : '#333';
-                     ctx.fillStyle=baseC; ctx.fillRect(x, y, 100, 100); 
-                     ctx.fillStyle=innerC; ctx.fillRect(x+10, y+10, 80, 80);
-                     ctx.fillStyle= e.active ? '#fff' : '#ffd700'; 
-                     ctx.fillRect(x+20, y+20, 60, 5); ctx.fillRect(x+20, y+40, 60, 5);
-                     ctx.fillRect(x+20, y+60, 60, 5);
-                } else if (e.name==='Frozen Friend') {
-                    ctx.fillStyle = e.active ? 'rgba(0,0,0,0)' : 'rgba(173, 216, 230, 0.6)';
-                    if(!e.active) {
-                        ctx.fillRect(x, y, 90, 90); 
-                        ctx.strokeStyle='#fff'; ctx.lineWidth=2; ctx.strokeRect(x,y,90,90);
-                        ctx.fillStyle='#000'; ctx.globalAlpha=0.5;
-                        ctx.beginPath(); ctx.arc(x+45, y+35, 15, 0, 6.28); ctx.fill();
-                        ctx.fillRect(x+30, y+50, 30, 30);
-                        ctx.globalAlpha=1.0;
-                        ctx.fillStyle='#fff'; ctx.fillRect(x+10, y+10, 5, 5); ctx.fillRect(x+70, y+80, 5, 5);
+            
+            // 1. THE NEW HIGH-RES STATUE
+            if(e.name === 'Angel Statue') {
+                drawHighResStatue(ctx, x, y, e.active);
+            }
+
+
+
+
+            // 2. FROZEN FRIEND (Matches Freed Size: 3.0x)
+            else if (e.name === 'Frozen Friend') {
+                let w = 2 * TILE; 
+                let h = 2 * TILE;
+                let cx = x + w/2;
+                let cy = y + h - 10; // Ground level
+                
+                let t = Date.now();
+                
+                // --- STATE A: FREED (You liked this size) ---
+                if(e.active) {
+                    // 1. Water Puddle
+                    ctx.fillStyle = 'rgba(129, 212, 250, 0.6)';
+                    ctx.beginPath(); ctx.ellipse(cx, cy, 40, 18, 0, 0, Math.PI*2); ctx.fill();
+                    
+                    // 2. Ice Debris
+                    ctx.fillStyle = 'rgba(225, 245, 254, 0.8)';
+                    for(let i=0; i<7; i++) {
+                        let sx = cx + Math.sin(i*13)*35;
+                        let sy = cy + Math.cos(i*13)*12;
+                        ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 6.28); ctx.fill();
                     }
+
+                    // 3. THE FRIEND (Scale 3.0x)
+                    ctx.save();
+                    ctx.translate(cx, cy - 5); 
+                    let bounce = Math.sin(t/150) * 3;
+                    ctx.translate(0, bounce);
+                    ctx.scale(3.0, 3.0); 
+
+                    // Legs
+                    ctx.fillStyle = '#37474f'; 
+                    ctx.fillRect(-2.5, 0, 2, 8); ctx.fillRect(0.5, 0, 2, 8); 
+                    // Body
+                    ctx.fillStyle = '#1e88e5'; 
+                    ctx.beginPath();
+                    ctx.moveTo(-4, -11); ctx.lineTo(4, -11); ctx.lineTo(5, 2); ctx.lineTo(-5, 2); ctx.fill();
+                    // Arms (\o/)
+                    ctx.strokeStyle = '#ffe0b2'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(-4, -9); ctx.lineTo(-8, -15); 
+                    ctx.moveTo(4, -9);  ctx.lineTo(8, -15);  
+                    ctx.stroke();
+                    // Head
+                    ctx.fillStyle = '#ffe0b2'; ctx.beginPath(); ctx.arc(0, -14, 3.5, 0, Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#6d4c41'; ctx.beginPath(); ctx.arc(0, -15, 4, Math.PI, 0); ctx.fill();
+                    // Face
+                    ctx.fillStyle = '#000'; ctx.fillRect(-1.5, -14, 1, 1); ctx.fillRect(0.5, -14, 1, 1);
+                    ctx.fillStyle = '#c62828'; ctx.fillRect(-3, -10, 6, 2); // Scarf
+
+                    ctx.restore();
+
+                    // 4. Floating Heart
+                    ctx.font = "28px sans-serif";
+                    ctx.fillStyle = "#ff1744";
+                    ctx.shadowColor = "#ff8a80"; ctx.shadowBlur = 10;
+                    ctx.textAlign = "center";
+                    ctx.fillText("❤️", cx, cy - 90 + bounce);
+                    ctx.shadowBlur = 0;
+                    ctx.textAlign = "left";
+                }
+
+                // --- STATE B: FROZEN (Now HUGE to match) ---
+                else {
+                    let pulse = Math.sin(t/500) * 3;
+
+                    // 1. THE TRAPPED PERSON (Scaled up to 3.0x)
+                    ctx.save();
+                    ctx.translate(cx, cy); 
+                    
+                    // ** UPDATED SCALE: 3.0x (Matches Freed) **
+                    ctx.scale(3.0, 3.0); 
+                    
+                    ctx.fillStyle = '#0d47a1'; // Deep Contrast Blue
+                    
+                    // Drawing relative to 0,0 feet
+                    ctx.fillRect(-2.5, -8, 2, 8); // Legs
+                    ctx.fillRect(0.5, -8, 2, 8);
+                    ctx.fillRect(-4, -20, 8, 12); // Body
+                    
+                    // Arms (Frozen straight down)
+                    ctx.fillRect(-5.5, -20, 1.5, 10);
+                    ctx.fillRect(4, -20, 1.5, 10);
+                    
+                    // Head
+                    ctx.beginPath(); ctx.arc(0, -23, 3.5, 0, Math.PI*2); ctx.fill();
+                    
+                    // Eyes
+                    ctx.fillStyle = '#fff';
+                    ctx.globalAlpha = 0.9 + Math.sin(t/150)*0.1; 
+                    ctx.fillRect(-1.5, -23.5, 1, 1); 
+                    ctx.fillRect(0.5, -23.5, 1, 1);
+                    
+                    ctx.restore();
+
+                    // 2. THE GIANT ICE CRYSTAL (Expanded Boundaries)
+                    ctx.save();
+                    ctx.translate(cx, cy); 
+                    
+                    // Transparent Glassy Look
+                    let iceGrad = ctx.createLinearGradient(0, -130, 0, 10);
+                    iceGrad.addColorStop(0, 'rgba(225, 245, 254, 0.25)'); 
+                    iceGrad.addColorStop(0.5, 'rgba(129, 212, 250, 0.20)');
+                    iceGrad.addColorStop(1, 'rgba(41, 182, 246, 0.35)'); 
+
+                    ctx.fillStyle = iceGrad;
+                    
+                    // ** UPDATED CRYSTAL SHAPE: Much Taller & Wider **
+                    ctx.beginPath();
+                    // Top Tip (Previously -110, now -130 to cover big head)
+                    ctx.moveTo(0, -130 + pulse); 
+                    ctx.lineTo(35, -90);         // Top Right
+                    ctx.lineTo(45, -30);         // Mid Right (Wider)
+                    ctx.lineTo(25, 10);          // Base Right
+                    ctx.lineTo(-25, 10);         // Base Left
+                    ctx.lineTo(-45, -30);        // Mid Left
+                    ctx.lineTo(-35, -90);        // Top Left
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // Reflections
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(-20, -100); ctx.lineTo(-30, -50);
+                    ctx.moveTo(18, -105); ctx.lineTo(28, -55);
+                    ctx.stroke();
+
+                    // Outline
+                    ctx.strokeStyle = '#81d4fa'; ctx.lineWidth = 1; ctx.stroke(); 
+
+                    // Glow
+                    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20 + pulse;
+                    ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fill(); 
+                    
+                    ctx.restore();
+                    ctx.shadowBlur = 0;
                 }
             }
+
+
+
+
+            // 3. TABLET (Keep as fallback)
+            else if(e.name==='Tablet') {
+                 let baseC = e.active ? '#f1c40f' : '#555';
+                 let innerC = e.active ? '#f39c12' : '#333';
+                 ctx.fillStyle=baseC; ctx.fillRect(x, y, 100, 100); 
+                 ctx.fillStyle=innerC; ctx.fillRect(x+10, y+10, 80, 80);
+                 ctx.fillStyle= e.active ? '#fff' : '#ffd700'; 
+                 ctx.fillRect(x+20, y+20, 60, 5); ctx.fillRect(x+20, y+40, 60, 5);
+                 ctx.fillRect(x+20, y+60, 60, 5);
+            }
+            
+            // 4. PORTAL (If you have one)
+            else if (e.name === 'PortalHome') {
+                 ctx.fillStyle = '#0ff'; ctx.fillRect(x,y,e.w*TILE,e.h*TILE);
+            }
+        }
+
+
+
             // --- PASTE THIS NEW PROJECTILE BLOCK ---
            else if(e.type==='proj') { 
                 
@@ -5464,6 +6134,88 @@ S.vfxs.forEach((v, i) => {
         
         ctx.shadowBlur=15; ctx.shadowColor='#fff';
         // ... rest of the existing code ...
+
+
+
+
+if(v.type === 'tectonic_rupture') {
+            let cx = x + 25; // Player Center
+            let cy = y + 40; 
+
+            let prog = 1 - (v.life / v.maxLife);
+            
+            // --- COLOR CYCLE ---
+            // 0% - 20%: Blinding White (Opening)
+            // 20% - 60%: Glowing Orange/Red (Lava)
+            // 60% - 100%: Dark Brown/Black (Cooling Rock)
+            let color, glow, width;
+            
+            if(prog < 0.2) {
+                color = '#ffffff'; glow = '#fff'; width = 8;
+            } else if(prog < 0.6) {
+                color = '#ff3d00'; glow = '#ffab91'; width = 6;
+            } else {
+                color = '#3e2723'; glow = null; width = 4;
+            }
+
+            ctx.save();
+            ctx.translate(cx, cy);
+            
+            // Draw all 8 Cracks
+            v.cracks.forEach(path => {
+                ctx.beginPath();
+                ctx.moveTo(path[0].x, path[0].y);
+                
+                // Draw line points based on progress (Cracks expand outward)
+                let visibleLength = Math.floor(path.length * (prog * 3)); // Expand fast
+                if(visibleLength > path.length) visibleLength = path.length;
+
+                for(let i=1; i<visibleLength; i++) {
+                    ctx.lineTo(path[i].x, path[i].y);
+                }
+
+                // Style
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                
+                // 1. Outer Glow (Magma Light)
+                if(glow) {
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = glow;
+                }
+                
+                // 2. The Crack Stroke
+                ctx.strokeStyle = color;
+                ctx.lineWidth = width;
+                ctx.stroke();
+
+                // 3. Inner Core (White hot center for Lava phase)
+                if(prog > 0.2 && prog < 0.6) {
+                    ctx.shadowBlur = 0;
+                    ctx.strokeStyle = '#ffeb3b'; // Yellow center
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            });
+            
+            ctx.restore();
+            ctx.shadowBlur = 0; // Reset
+        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -5754,69 +6506,6 @@ if(v.type === 'explosion_cloud') {
 
 
 
-if(v.type === 'tectonic_rupture') {
-            let cx = x + 25; // Player Center
-            let cy = y + 40; 
-
-            let prog = 1 - (v.life / v.maxLife);
-            
-            // --- COLOR CYCLE ---
-            // 0% - 20%: Blinding White (Opening)
-            // 20% - 60%: Glowing Orange/Red (Lava)
-            // 60% - 100%: Dark Brown/Black (Cooling Rock)
-            let color, glow, width;
-            
-            if(prog < 0.2) {
-                color = '#ffffff'; glow = '#fff'; width = 8;
-            } else if(prog < 0.6) {
-                color = '#ff3d00'; glow = '#ffab91'; width = 6;
-            } else {
-                color = '#3e2723'; glow = null; width = 4;
-            }
-
-            ctx.save();
-            ctx.translate(cx, cy);
-            
-            // Draw all 8 Cracks
-            v.cracks.forEach(path => {
-                ctx.beginPath();
-                ctx.moveTo(path[0].x, path[0].y);
-                
-                // Draw line points based on progress (Cracks expand outward)
-                let visibleLength = Math.floor(path.length * (prog * 3)); // Expand fast
-                if(visibleLength > path.length) visibleLength = path.length;
-
-                for(let i=1; i<visibleLength; i++) {
-                    ctx.lineTo(path[i].x, path[i].y);
-                }
-
-                // Style
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                // 1. Outer Glow (Magma Light)
-                if(glow) {
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = glow;
-                }
-                
-                // 2. The Crack Stroke
-                ctx.strokeStyle = color;
-                ctx.lineWidth = width;
-                ctx.stroke();
-
-                // 3. Inner Core (White hot center for Lava phase)
-                if(prog > 0.2 && prog < 0.6) {
-                    ctx.shadowBlur = 0;
-                    ctx.strokeStyle = '#ffeb3b'; // Yellow center
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-            });
-            
-            ctx.restore();
-            ctx.shadowBlur = 0; // Reset
-        }
 
 
 
@@ -6715,7 +7404,7 @@ function drawMob(x, y, m) {
 
 function drawNPC(x, y, n) {
     let b = Math.sin(Date.now()/300)*2;
-    ctx.save(); ctx.translate(x+25, y+35); 
+    ctx.save(); ctx.translate(x+25, y+12); 
     ctx.scale(3.0, 3.0); 
     
     let hash = 0;
@@ -6723,15 +7412,111 @@ function drawNPC(x, y, n) {
     let hue = Math.abs(hash % 360);
     let clothColor = `hsl(${hue}, 60%, 50%)`;
     let hairColor = `hsl(${hue}, 40%, 30%)`;
+	let skinColor = '#f5cba7';
 
-    if(n.name === "Shummi") {
-        ctx.fillStyle = '#f5cba7'; ctx.fillRect(-3, -7, 6, 5); 
-        ctx.fillStyle = clothColor; 
-        ctx.beginPath(); ctx.moveTo(-3, -2); ctx.lineTo(3, -2); ctx.lineTo(5, 8); ctx.lineTo(-5, 8); ctx.fill(); 
-        ctx.fillStyle = hairColor;
-        ctx.fillRect(-4, -9, 8, 4); 
-        ctx.fillRect(-5, -6, 2, 2); ctx.fillRect(3, -6, 2, 2);
+
+ // --- [FIX] CUSTOM COLORS FOR JINGLE & MARY ---
+    if (n.name === "Jingle") {
+        clothColor = '#ff5252'; // Bright Red (Singapore Style)
+        hairColor = '#212121';  // Dark Black Hair
     }
+    else if (n.name === "Mary") {
+        clothColor = '#ab47bc'; // Soft Purple
+        hairColor = '#ffd54f';  // Golden Blonde
+    }
+    // ---------------------------------------------
+
+
+
+
+
+if(n.name === "Shummi") {
+        // 1. LEGS (Classic Chinos - Static)
+        ctx.fillStyle = '#c5a585'; 
+        ctx.fillRect(-3.5, 5, 3, 9); // Left Leg
+        ctx.fillRect(0.5, 5, 3, 9);  // Right Leg
+
+        // Rolled Cuffs
+        ctx.fillStyle = '#d7ccc8'; 
+        ctx.fillRect(-3.5, 13, 3, 1);
+        ctx.fillRect(0.5, 13, 3, 1);
+
+        // 2. SHOES (White Sneakers)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 14, 3, 1.5);
+        ctx.fillRect(0.5, 14, 3, 1.5);
+
+        // 3. TORSO (White & Navy Striped Top)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4, -1, 8, 7);
+
+        // Navy Stripes
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-4, 0, 8, 1);
+        ctx.fillRect(-4, 2, 8, 1);
+        ctx.fillRect(-4, 4, 8, 1);
+
+        // Brown Leather Belt
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(-4, 5, 8, 1);
+        // Gold Buckle
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-1, 5, 2, 1);
+
+        // 4. ARMS (Static by sides)
+        // Sleeves
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-6, -1, 2, 3); 
+        ctx.fillRect(4, -1, 2, 3);
+        
+        // Sleeve Stripes
+        ctx.fillStyle = '#1a237e';
+        ctx.fillRect(-6, 0, 2, 1); ctx.fillRect(4, 0, 2, 1);
+        ctx.fillRect(-6, 2, 2, 1); ctx.fillRect(4, 2, 2, 1);
+        
+        // Skin Arms
+        ctx.fillStyle = '#f5cba7'; 
+        ctx.fillRect(-6, 2, 2, 4); 
+        ctx.fillRect(4, 2, 2, 4);
+
+        // 5. HEAD & FACE
+        ctx.fillStyle = '#f5cba7'; 
+        ctx.fillRect(-3, -7, 6, 6);
+
+        ctx.fillStyle = '#000'; // Eyes
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+        
+        ctx.fillStyle = '#bf360c'; // Smile
+        ctx.fillRect(-1, -3, 2, 1);
+
+        // 6. HAIR (Solid Shape - No Holes)
+        ctx.fillStyle = '#212121'; // Black
+        
+        ctx.beginPath();
+        // Start Left Sideburn
+        ctx.moveTo(-5, -4);
+        // Up Left Side
+        ctx.lineTo(-5, -8);
+        // Curve over Top
+        ctx.quadraticCurveTo(-5, -12, 0, -12); 
+        ctx.quadraticCurveTo(5, -12, 5, -8);
+        // Down Right Side
+        ctx.lineTo(5, -4);
+        // Right Ear Cutout
+        ctx.lineTo(3.5, -4);
+        ctx.lineTo(3.5, -8);
+        // Bangs (Solid)
+        ctx.lineTo(2, -6);  
+        ctx.lineTo(-1, -6); 
+        ctx.lineTo(-3.5, -8); 
+        ctx.lineTo(-3.5, -4); 
+        ctx.fill();
+    }
+
+
+
+
   // --- NOAH (The French Artist) ---
     else if(n.name === "Noah") {
      // 1. LEGS (Dark Trousers)
@@ -6853,23 +7638,86 @@ function drawNPC(x, y, n) {
         
         ctx.fillStyle = '#b0bec5'; ctx.fillRect(-5, -5, 1, 2); ctx.fillRect(4, -5, 1, 2);
     }
+
+
+
+
+
+
+
+
+
     else if(n.gender === 'F') {
 
 
 
 
-        ctx.fillStyle = hairColor; ctx.fillRect(-6, -8, 12, 12); 
-        ctx.fillStyle = '#f5cba7'; ctx.fillRect(-3, -7, 6, 5); 
+       // 1. LEGS (Skin) & SHOES (Dark)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, 8, 2, 3); ctx.fillRect(1, 8, 2, 3);
+        ctx.fillStyle = '#444';    ctx.fillRect(-3, 10, 2, 1); ctx.fillRect(1, 10, 2, 1);
+
+        // 2. DRESS (Body + Flared Skirt)
         ctx.fillStyle = clothColor;
-        ctx.beginPath(); ctx.moveTo(-3, -2); ctx.lineTo(3, -2); ctx.lineTo(5, 8); ctx.lineTo(-5, 8); ctx.fill();
-        ctx.fillStyle = hairColor; ctx.fillRect(-5, -7, 2, 8); ctx.fillRect(3, -7, 2, 8);
-    } 
+        ctx.fillRect(-4, -1, 8, 6); // Top
+        ctx.beginPath(); ctx.moveTo(-4, 5); ctx.lineTo(4, 5); ctx.lineTo(6, 9); ctx.lineTo(-6, 9); ctx.fill(); // Skirt
+
+        // 3. ARMS (Skin)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6, 0, 2, 5); // Left Arm
+        ctx.fillRect(4, 0, 2, 5);  // Right Arm
+        ctx.fillRect(-6, 5, 2, 1); // Hands
+        ctx.fillRect(4, 5, 2, 1);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6); 
+        ctx.fillStyle = hairColor; 
+        ctx.fillRect(-4, -8, 8, 3); // Top Hair
+        ctx.fillRect(-5, -7, 2, 8); // Side L
+        ctx.fillRect(3, -7, 2, 8);  // Side R
+    
+
+
+
+
+
+
+} 
+
+
+
+
     else {
-        ctx.fillStyle = '#f5cba7'; ctx.fillRect(-3, -7, 6, 5);
-        ctx.fillStyle = hairColor; ctx.fillRect(-4, -9, 8, 3); ctx.fillRect(-4, -6, 1, 2); ctx.fillRect(3, -6, 1, 2);
-        ctx.fillStyle = clothColor; ctx.fillRect(-4, -2, 8, 6);
-        ctx.fillStyle = '#333'; ctx.fillRect(-3, 4, 2, 4); ctx.fillRect(1, 4, 2, 4);
-    }
+
+        // 1. LEGS (Pants) & SHOES (Dark)
+        ctx.fillStyle = '#37474f'; 
+        ctx.fillRect(-4, 6, 3, 5); ctx.fillRect(1, 6, 3, 5);
+        ctx.fillStyle = '#111';    
+        ctx.fillRect(-5, 10, 4, 1); ctx.fillRect(1, 10, 4, 1);
+
+        // 2. SHIRT & BELT
+        ctx.fillStyle = clothColor;
+        ctx.fillRect(-5, -1, 10, 7);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(-5, 6, 10, 1); // Belt
+
+        // 3. ARMS (Sleeves + Hands)
+        ctx.fillStyle = clothColor; ctx.fillRect(-7, -1, 2, 4); ctx.fillRect(5, -1, 2, 4);
+        ctx.fillStyle = skinColor;  ctx.fillRect(-7, 3, 2, 3);  ctx.fillRect(5, 3, 2, 3);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = hairColor; 
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-4, -6, 1, 2); // Side L
+        ctx.fillRect(3, -6, 1, 2);  // Side R
+ 
+
+
+
+   }
+
+
+
+
     ctx.fillStyle='#000'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
     ctx.restore();
     
@@ -7058,9 +7906,14 @@ function drawStruct(x, y, e) {
     }
 }
 
-function drawEnv(x, y, k) {
+
+
+
+
+function drawEnv(x, y, k, e) {  // <--- Ensure ', e' is here
     let px = x, py = y; 
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth=2;
+    
     if(k.includes('tree')) { 
         ctx.fillStyle='#5d4037'; ctx.fillRect(px+20, py+35, 10, 15); 
         ctx.fillStyle = k==='tree_f' ? '#145a32' : '#2ecc71'; 
@@ -7069,6 +7922,276 @@ function drawEnv(x, y, k) {
     else if(k==='flower') { ctx.fillStyle='#e91e63'; ctx.beginPath(); ctx.arc(px+25,py+35,4,0,6.28); ctx.fill(); }
     else if(k==='cactus') { ctx.fillStyle='#27ae60'; ctx.fillRect(px+22, py+15, 6, 35); ctx.fillRect(px+12, py+25, 26, 6); }
     else if(k==='ice_crystal') { ctx.fillStyle='#d6eaf8'; ctx.beginPath(); ctx.moveTo(px+10,py+45); ctx.lineTo(px+25,py+10); ctx.lineTo(px+40,py+45); ctx.fill(); }
+    
+
+
+
+
+
+
+
+
+
+
+
+// --- PASTE START ---
+
+    // 1. ROCKS & DEBRIS (Void Shards, Magma Rocks, Rubble)
+    else if(k==='rock' || k==='rubble' || k==='column' || k==='magma_rock' || k==='void_shard') {
+        if(k==='magma_rock') {
+            ctx.fillStyle='#3e2723'; ctx.beginPath(); ctx.arc(px+25, py+40, 10, 0, 6.28); ctx.fill();
+            ctx.fillStyle='#ff5722'; ctx.fillRect(px+22, py+35, 6, 10); ctx.fillRect(px+18, py+38, 14, 4);
+        } else if(k==='void_shard') {
+            ctx.fillStyle='#9c27b0'; ctx.beginPath(); ctx.moveTo(px+25, py+40); ctx.lineTo(px+15, py+20); ctx.lineTo(px+25, py+5); ctx.lineTo(px+35, py+20); ctx.fill();
+        } else {
+            ctx.fillStyle='#7f8c8d'; ctx.beginPath(); ctx.arc(px+25,py+40,8,0,6.28); ctx.fill(); 
+        }
+    }
+
+    // 2. DYNAMIC MUD (Swamp 2x2, 4x4, etc)
+    // 2. DYNAMIC MUD (Swamp)
+    else if(k==='big_mud') {
+        let width = (e ? e.w : 2) * TILE;
+        let height = (e ? e.h : 2) * TILE;
+        let cx = px + width/2;
+        let cy = py + height/2;
+        
+        // Flatten the perspective
+        let rX = width * 0.45; 
+        let rY = height * 0.25; 
+
+        // 1. Shadow/Ground Seepage
+        ctx.fillStyle='rgba(40, 30, 20, 0.4)';
+        ctx.beginPath(); ctx.ellipse(cx, cy+15, rX+5, rY+5, 0, 0, 6.28); ctx.fill();
+
+        // 2. Main Sludge Pile (Irregular)
+        ctx.fillStyle='#3e2723'; 
+        ctx.beginPath(); ctx.ellipse(cx, cy+5, rX, rY, 0, 0, 6.28); ctx.fill();
+        
+        // 3. Liquid Top
+        ctx.fillStyle='#4a3b2a'; 
+        ctx.beginPath(); ctx.ellipse(cx, cy-2, rX*0.9, rY*0.9, 0, 0, 6.28); ctx.fill();
+        
+        // 4. Bubbles
+        let t = Date.now() / 300;
+        let bubbleCount = Math.floor(e ? e.w * 3 : 5);
+        ctx.fillStyle = 'rgba(93, 64, 55, 0.9)'; // Lighter mud bubble
+        
+        for(let i=0; i<bubbleCount; i++) {
+            let offset = Math.sin(i*132) * (rX*0.6);
+            let yOff = Math.cos(i*44) * (rY*0.5);
+            // Throbbing size
+            let bSize = 4 + Math.sin(t + i)*4;
+            if(bSize > 0) {
+                ctx.beginPath(); 
+                ctx.arc(cx + offset, cy + yOff - 5, bSize, 0, 6.28); 
+                ctx.fill();
+                // Highlight
+                ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                ctx.beginPath(); ctx.arc(cx+offset-1, cy+yOff-6, bSize/3, 0, 6.28); ctx.fill();
+                ctx.fillStyle = 'rgba(93, 64, 55, 0.9)'; // Reset
+            }
+        }
+    }
+
+
+
+
+    // 3. DYNAMIC VOLCANO (Redesigned: Mountain Shape)
+    // 3. DYNAMIC VOLCANO (Realistic 3D Version)
+    // 3. ICONIC SHORT VOLCANO (Conical Shape)
+   // 3. JAGGED VOLCANIC STUMP (Rugged, Cracked, Uneven)
+   // 3. JAGGED VOLCANO V7 (Thick Steam + Wrinkles + Veins + Bubbles)
+    else if(k === 'lava_crater') {
+        let w = (e ? e.w : 2) * TILE;
+        let h = (e ? e.h : 2) * TILE;
+        
+        let cx = px + w/2; 
+        let cy = py + h - 5; 
+        
+        let rimY = py + (h * 0.25); 
+        let rimW = w * 0.55;       
+        let baseW = w * 0.95;     
+
+        let t = Date.now();
+        let pulse = Math.sin(t / 250) * 0.1; 
+
+        // STABLE NOISE
+        let seed = (e.x * 999.9) + (e.y * 111.1);
+        const getJag = (index, amplitude) => {
+            let x = Math.sin(seed + index) * 10000;
+            return (x - Math.floor(x)) * amplitude;
+        };
+
+        // --- A. MOUNTAIN BODY ---
+        let bodyGrad = ctx.createLinearGradient(px, rimY, px, cy);
+        bodyGrad.addColorStop(0, '#4e342e');   // Ash Highlight
+        bodyGrad.addColorStop(0.5, '#212121'); // Dark Rock
+        bodyGrad.addColorStop(1, '#000000');   // Base
+        
+        ctx.fillStyle = bodyGrad;
+        ctx.beginPath();
+        
+        // Left Slope
+        ctx.moveTo(cx - rimW/2, rimY);
+        ctx.lineTo(cx - baseW*0.35 + getJag(1,6), rimY + (h*0.3)); 
+        ctx.lineTo(cx - baseW*0.45 + getJag(2,8), rimY + (h*0.6));
+        ctx.lineTo(cx - baseW/2 + getJag(3,5), cy); 
+        // Bottom
+        ctx.lineTo(cx, cy + 5); 
+        ctx.lineTo(cx + baseW/2 + getJag(4,5), cy); 
+        // Right Slope
+        ctx.lineTo(cx + baseW*0.45 + getJag(5,8), rimY + (h*0.6));
+        ctx.lineTo(cx + baseW*0.35 + getJag(6,6), rimY + (h*0.3));
+        ctx.lineTo(cx + rimW/2, rimY); 
+        
+        ctx.closePath();
+        ctx.fill();
+
+        // --- B1. DARK WRINKLES (Shadows) ---
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'; 
+        ctx.lineWidth = 3; 
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        // Wrinkle 1
+        ctx.moveTo(cx - rimW*0.4, rimY + 10);
+        ctx.lineTo(cx - baseW*0.3 + getJag(50,2), rimY + h*0.4);
+        ctx.lineTo(cx - baseW*0.4, cy - 8);
+        // Wrinkle 2
+        ctx.moveTo(cx + rimW*0.35, rimY + 12);
+        ctx.lineTo(cx + baseW*0.3 + getJag(51,3), rimY + h*0.5);
+        ctx.lineTo(cx + baseW*0.35, cy - 5);
+        // Wrinkle 3
+        ctx.moveTo(cx - 5, rimY + 20);
+        ctx.lineTo(cx + 2 + getJag(52,4), rimY + h*0.4);
+        ctx.lineTo(cx - 3, cy - 10);
+        ctx.stroke();
+
+        // --- B2. ORANGE SURFACE VEINS (Added On Top) ---
+        ctx.strokeStyle = `rgba(255, 87, 34, ${0.6 + pulse})`; 
+        ctx.lineWidth = 1.5; 
+        ctx.beginPath();
+        ctx.moveTo(cx - rimW*0.5, rimY + 25); 
+        ctx.lineTo(cx - baseW*0.2 + getJag(60,2), rimY + 45);
+        ctx.moveTo(cx + rimW*0.4, rimY + 15);
+        ctx.lineTo(cx + rimW*0.5 + getJag(61,2), rimY + 30);
+        ctx.stroke();
+
+        // --- C. WIDE MAGMA FISSURES ---
+        ctx.fillStyle = `rgba(183, 28, 28, ${0.8 + pulse})`;
+        ctx.shadowColor = '#d84315'; ctx.shadowBlur = 10;
+        ctx.beginPath();
+        let fx = cx - (rimW * 0.3);
+        ctx.moveTo(fx, rimY + 25);
+        ctx.lineTo(fx + 5, rimY + 25); 
+        ctx.lineTo(fx + 6 + getJag(10,3), rimY + 45);
+        ctx.lineTo(fx - 2 + getJag(11,3), rimY + 60); 
+        ctx.lineTo(fx - 4, rimY + 45);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // --- D. THE RIM & LAVA ---
+        // Back Wall
+        ctx.fillStyle = '#0d0d0d';
+        ctx.beginPath();
+        for(let i=0; i<=12; i++) {
+            let ang = Math.PI + (i/12)*Math.PI;
+            let r = (rimW/2) + getJag(20+i, 3);
+            let rx = cx + Math.cos(ang) * r;
+            let ry = rimY + Math.sin(ang) * (r*0.4);
+            if(i===0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+        }
+        ctx.fill();
+
+        // Lava Pool
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cx, rimY+4, rimW/2 - 2, (rimW/2)*0.35, 0, 0, Math.PI*2);
+        ctx.clip();
+        let lGrad = ctx.createRadialGradient(cx, rimY+5, 1, cx, rimY+5, rimW);
+        lGrad.addColorStop(0, '#ffd600'); lGrad.addColorStop(0.5, '#d84315'); lGrad.addColorStop(1, '#3e2723');
+        ctx.fillStyle = lGrad;
+        ctx.fillRect(px, py, w, h);
+
+        // Popping Bubbles
+        for(let i=0; i<3; i++) {
+            let cycle = (t + i*800) % 2000; 
+            if(cycle < 1000) { 
+                let size = (cycle / 1000) * 5; 
+                let alpha = 1 - (cycle / 1000); 
+                let bx = cx + Math.sin(i*99)*10;
+                let by = (rimY+4) + Math.cos(i*99)*3;
+                ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+                ctx.beginPath(); ctx.arc(bx, by, size, 0, 6.28); ctx.fill();
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.arc(bx-1, by-1, size*0.3, 0, 6.28); ctx.fill();
+            }
+        }
+        ctx.restore();
+
+        // Front Wall
+        ctx.fillStyle = '#4e342e'; 
+        ctx.beginPath();
+        for(let i=0; i<=12; i++) {
+            let ang = (i/12)*Math.PI; 
+            let r = (rimW/2) + getJag(40+i, 3);
+            let rx = cx + Math.cos(ang) * r;
+            let ry = rimY + Math.sin(ang) * (r*0.4); 
+            if(i===0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
+        }
+        for(let i=12; i>=0; i--) {
+            let ang = (i/12)*Math.PI; 
+            let r = (rimW/2) - 3 + getJag(40+i, 2); 
+            let rx = cx + Math.cos(ang) * r;
+            let ry = rimY + 2 + Math.sin(ang) * (r*0.4); 
+            ctx.lineTo(rx, ry);
+        }
+        ctx.fill();
+
+        // --- E. ATMOSPHERE (OBVIOUS STEAM) ---
+        // 3 continuous puffs rising higher and thicker
+        for(let i=0; i<3; i++) {
+            let cycleLen = 2000; // 2 seconds per puff loop
+            let offset = i * (cycleLen / 3); // Stagger them equally
+            let prog = ((t + offset) % cycleLen) / cycleLen; // 0.0 to 1.0
+            
+            // Dynamics
+            let rise = prog * 40; // Rises 40 pixels high
+            let size = 5 + (prog * 10); // Grows from 5px to 15px
+            let alpha = (1 - prog) * 0.6; // Starts at 0.6 opacity (Very Visible)
+            let wiggle = Math.sin((t / 400) + i) * (5 + prog * 10); // Sways wider at top
+
+            // Draw Puff
+            ctx.fillStyle = `rgba(220, 220, 220, ${alpha})`; // Light Grey/White
+            ctx.beginPath();
+            ctx.arc(cx + wiggle, rimY - 5 - rise, size, 0, Math.PI*2);
+            ctx.fill();
+        }
+
+        // Heat Haze (Glow)
+        ctx.shadowColor = '#e65100'; 
+        ctx.shadowBlur = 20 + (pulse * 30); 
+        ctx.fillStyle = 'rgba(0,0,0,0)'; 
+        ctx.beginPath(); ctx.ellipse(cx, rimY, rimW/2, rimW/4, 0, 0, Math.PI*2); ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+
+    // --- PASTE END ---
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
+
     else { ctx.fillStyle='#7f8c8d'; ctx.beginPath(); ctx.arc(px+25,py+40,8,0,6.28); ctx.fill(); }
 }
 
@@ -7738,6 +8861,170 @@ function showChat(name, txt, isIntro = false) {
 
 
 
+
+
+
+// --- HIGH FIDELITY STATUE RENDERER (V3: High Contrast & Solid Wings) ---
+function drawHighResStatue(ctx, x, y, active) {
+    // 1. Setup Palette
+    // RUINS FLOOR is #616161. 
+    // We use #b0bec5 (Blue Grey) for the statue so it pops out.
+    const P = active ? {
+        base: '#ffffff',    // Pure White
+        mid:  '#e0e0e0',    // Light Grey
+        dark: '#bdbdbd',    // Shading
+        deep: '#757575',    // Outlines
+        accent: '#ffd700'   // Gold
+    } : {
+        base: '#b0bec5',    // Blue-Grey Stone (Contrast vs Floor)
+        mid:  '#78909c',    // Darker Blue-Grey
+        dark: '#546e7a',    // Deep Shadow
+        deep: '#37474f',    // Outline
+        accent: '#558b2f'   // Moss
+    };
+
+    ctx.save();
+    
+    // 2. Position & Scale 
+    ctx.translate(x + 25, y + 45); 
+    ctx.scale(1.0, 1.0); 
+
+    // --- A. THE PEDESTAL (Grounding) ---
+    // Dark base to separate from floor
+    ctx.fillStyle = '#263238'; ctx.fillRect(-35, 0, 70, 10);
+    ctx.fillStyle = '#455a64'; ctx.fillRect(-30, -10, 60, 10);
+    
+    // --- B. THE WINGS (Redesigned: Solid Folded Stone) ---
+    // No longer thin lines. These are massive slabs.
+    const drawWing = (dir) => {
+        ctx.save();
+        ctx.scale(dir, 1);
+        ctx.fillStyle = P.mid;
+        
+        ctx.beginPath();
+        // Start behind shoulder
+        ctx.moveTo(15, -60); 
+        // Curve up and out (The "Shoulder" of the wing)
+        ctx.quadraticCurveTo(40, -90, 60, -50); 
+        // The long feathers dragging down
+        ctx.lineTo(55, -10); 
+        // Curve back in to body
+        ctx.quadraticCurveTo(40, 0, 15, -30); 
+        ctx.fill();
+
+        // Feather Texture (Carved Lines)
+        ctx.strokeStyle = P.dark; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(25, -60); ctx.quadraticCurveTo(45, -70, 50, -40); // Top layer
+        ctx.moveTo(25, -50); ctx.quadraticCurveTo(40, -50, 45, -20); // Mid layer
+        ctx.stroke();
+
+        ctx.restore();
+    };
+    // Draw behind body
+    drawWing(1); drawWing(-1); 
+
+    // --- C. THE BODY (Draped Toga) ---
+    ctx.fillStyle = P.base;
+    ctx.beginPath();
+    // Wider stance to look heavy
+    ctx.moveTo(-18, -65); // Neck
+    ctx.lineTo(-24, -10); // Waist
+    ctx.lineTo(-32, 10);  // Base Flare Left
+    ctx.lineTo(32, 10);   // Base Flare Right
+    ctx.lineTo(24, -10);  // Waist
+    ctx.lineTo(18, -65);  // Neck
+    ctx.fill();
+
+    // Fabric Folds (Shadows)
+    ctx.fillStyle = P.dark;
+    ctx.beginPath(); 
+    ctx.moveTo(0, -60); 
+    ctx.quadraticCurveTo(-15, -30, 8, 10); // Main diagonal fold
+    ctx.lineTo(14, 10); 
+    ctx.quadraticCurveTo(-8, -30, 8, -60); 
+    ctx.fill();
+    
+    // Sash
+    ctx.fillStyle = P.mid; ctx.fillRect(-22, -25, 44, 8);
+
+    // --- D. THE HEAD (Big & Detailed) ---
+    // Neck
+    ctx.fillStyle = P.dark; ctx.fillRect(-9, -75, 18, 12);
+    
+    // Face Mass
+    ctx.fillStyle = P.base;
+    ctx.beginPath();
+    ctx.moveTo(-15, -92); 
+    ctx.lineTo(-15, -78); // Cheek
+    ctx.quadraticCurveTo(0, -70, 15, -78); // Chin
+    ctx.lineTo(15, -92); 
+    ctx.quadraticCurveTo(0, -108, -15, -92); // Forehead
+    ctx.fill();
+
+    // Nose (Shadow Triangle)
+    ctx.fillStyle = P.dark;
+    ctx.beginPath(); ctx.moveTo(-2, -90); ctx.lineTo(-5, -84); ctx.lineTo(0, -81); ctx.lineTo(3, -84); ctx.fill();
+
+    // Eye Sockets
+    ctx.fillStyle = P.dark;
+    ctx.beginPath(); ctx.ellipse(-7, -88, 4, 3, 0.2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(7, -88, 4, 3, -0.2, 0, Math.PI*2); ctx.fill();
+
+    // Eyelids/Pupils
+    if(active) {
+        ctx.fillStyle = '#fff'; // Whites
+        ctx.fillRect(-8, -89, 2, 2); ctx.fillRect(6, -89, 2, 2);
+    }
+
+    // Mouth
+    ctx.fillStyle = P.deep; ctx.fillRect(-5, -79, 10, 1); 
+
+    // Hair (Carved Stone Curls)
+    ctx.fillStyle = P.mid;
+    for(let i=0; i<6; i++) { 
+        ctx.beginPath(); ctx.arc(-16 + (i*6.4), -102, 7, 0, Math.PI*2); ctx.fill(); 
+    }
+    // Sideburns
+    ctx.beginPath(); ctx.arc(-16, -90, 6, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(16, -90, 6, 0, Math.PI*2); ctx.fill();
+
+    // --- E. ARMS (Praying) ---
+    ctx.fillStyle = P.base;
+    // Shoulders
+    ctx.beginPath(); ctx.arc(-20, -60, 12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(20, -60, 12, 0, Math.PI*2); ctx.fill();
+    
+    // Forearms
+    ctx.beginPath(); ctx.moveTo(-20, -60); ctx.lineTo(-5, -45); ctx.lineTo(0, -55); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(20, -60); ctx.lineTo(5, -45); ctx.lineTo(0, -55); ctx.fill();
+    
+    // Hands
+    ctx.fillStyle = P.mid;
+    ctx.beginPath(); ctx.arc(0, -45, 6, 0, Math.PI*2); ctx.fill();
+
+    // --- F. EFFECTS ---
+    if(!active) {
+        // High Contrast Moss
+        ctx.fillStyle = P.accent; 
+        ctx.beginPath(); ctx.arc(-15, -60, 5, 0, Math.PI*2); ctx.fill(); 
+        ctx.beginPath(); ctx.ellipse(18, 5, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+        
+        // Deep Cracks (Dark Grey)
+        ctx.strokeStyle = '#263238'; ctx.lineWidth = 1; 
+        ctx.beginPath(); ctx.moveTo(-12, -10); ctx.lineTo(-8, -20); ctx.lineTo(-12, -25); ctx.stroke(); 
+    } else {
+        // Halo
+        ctx.strokeStyle = P.accent; ctx.lineWidth = 2; 
+        ctx.beginPath(); ctx.ellipse(0, -110, 22, 6, 0, 0, Math.PI*2); ctx.stroke();
+        
+        // Aura
+        let pulse = Math.sin(Date.now()/300) * 2;
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.15)';
+        ctx.beginPath(); ctx.ellipse(0, -45, 45 + pulse, 70, 0, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+}
 
 
 
