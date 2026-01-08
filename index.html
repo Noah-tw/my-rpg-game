@@ -2842,8 +2842,8 @@ function genMap() {
    // --- REPLACE TABLETS WITH STATUES (TIGHT SANCTUARY LAYOUT) ---
     // Center X is 125. We place them just slightly off-center so the path is open.
     
-    // 1. Top Right (Altar) - Moved closer to center (129)
-    addObj("Angel Statue", 129, 64, "The Guardian of the East is restored."); 
+    // 1. Top LEFT (Moved from 129 to 121)
+    addObj("Angel Statue", 121, 64, "The Guardian of the East is restored.");
     
     // 2. Middle Left - Moved closer (121)
     addObj("Angel Statue", 121, 78, "The Guardian of the West shines bright."); 
@@ -5465,36 +5465,34 @@ if(p.type==='bubble') {
     // Decides what draws in front of what
     // --- SORTING LOGIC (Depth Buffer) ---
     // --- SORTING LOGIC (Depth Buffer) ---
+    // --- SORTING LOGIC (Depth Buffer) ---
+    // --- SORTING LOGIC (Depth Buffer) ---
+    // --- SORTING LOGIC (Depth Buffer) ---
+    // --- SORTING LOGIC (Depth Buffer - FIXED) ---
+   // --- SORTING LOGIC (Depth Buffer - TITAN FIX) ---
     list.sort((a,b) => {
         let getDepth = (e) => {
-            // 1. TORNADO: Always on top (Flying)
-            if (e.type === 'tornado') return e.y + 5000; 
-
-            // 2. SWAMP (Mud): Always on bottom
-            if (e.kind === 'big_mud') return -9999; 
-
-            // 3. FarmHouse inside check
+            if (e.type === 'shadow_hand') return 999999; 
+            if (e.type === 'tornado') return 500000; 
+            if (e.kind === 'big_mud') return -999999; 
             if (e.kind === 'FarmHouse') return isInside ? -10000 : (e.y + e.h);
 
-            // 4. PLAYER (Feet Position)
-            if (e.type === 'p') return e.y + 0.95;
+            // PLAYER: Base Depth
+            if (e.type === 'p') return e.y + 1.2;
 
-            // 5. ENVIRONMENT FIX (Trees, Flowers, Rocks)
-            // Use a fixed offset (0.85) instead of 'e.h'.
-            // This ensures that if Player (0.95) and Tree (0.85) are on the same Y,
-            // the Player (0.95) draws LAST (On Top).
-            if (e.type === 'env') {
-                // Exception: The Volcano needs to be sorted by its bottom because it's huge
-                if (e.kind === 'lava_crater') return e.y + e.h - 0.2;
+            if (e.type === 'mob' && e.boss) {
+                // TITAN FIX: Pushes the Titan deep into the background (-3.5).
+                // You will stand IN FRONT of him unless you walk above his head.
+                if(e.name === 'Chaos Titan') return e.y + e.h - 3.5;
                 
-                // Standard Trees/Rocks: Sort by base of the tile
+                return e.y + e.h - 1.2;
+            }
+
+            if (e.type === 'env') {
+                if (e.kind === 'lava_crater') return e.y + e.h - 0.2;
                 return e.y + 0.85; 
             }
 
-            // 6. Projectiles (Fly over small things)
-            if (e.type === 'proj') return e.y + 0.8;
-
-            // Default: Sort by bottom of the entity
             return e.y + (e.h||1);
         };
         return getDepth(a) - getDepth(b);
@@ -5783,143 +5781,159 @@ else if(e.type === 'shadow_hand') {
 
 
 
-            // 2. FROZEN FRIEND (Matches Freed Size: 3.0x)
+            // 2. FROZEN FRIEND (Custom Outfits & Hats)
             else if (e.name === 'Frozen Friend') {
                 let w = 2 * TILE; 
                 let h = 2 * TILE;
                 let cx = x + w/2;
-                let cy = y + h - 10; // Ground level
-                
+                let cy = y + h - 10;
                 let t = Date.now();
+
+                // --- A. GENERATE UNIQUE STYLE ---
+                // We use their X/Y position to pick their clothes.
+                // This ensures they look different from each other, but stay consistent.
+                let seed = Math.floor(e.x * 13 + e.y * 7);
                 
-                // --- STATE A: FREED (You liked this size) ---
+                // Palette Options
+                const coats = ['#e53935', '#1e88e5', '#43a047', '#fb8c00', '#8e24aa', '#00acc1']; // Red, Blue, Green, Orange, Purple, Teal
+                const hats  = ['#fff', '#212121', '#ffeb3b']; // White, Black, Yellow
+                
+                // Pick traits
+                let coatColor = coats[seed % coats.length];
+                let hatColor  = hats[(seed + 1) % hats.length];
+                let hatType   = seed % 3; // 0=Beanie, 1=Earmuffs, 2=Hood
+                let scarfColor = (seed % 2 === 0) ? '#fff' : '#ffd700'; // White or Gold Scarf
+
+                // Helper to draw the Person
+                const drawPerson = () => {
+                    // Legs
+                    ctx.fillStyle = '#37474f'; 
+                    ctx.fillRect(-2.5, 0, 2, 8); ctx.fillRect(0.5, 0, 2, 8); 
+                    
+                    // Body (Coat)
+                    ctx.fillStyle = coatColor; 
+                    // Trapezoid Coat Shape
+                    ctx.beginPath();
+                    ctx.moveTo(-4, -12); ctx.lineTo(4, -12); 
+                    ctx.lineTo(5, 2); ctx.lineTo(-5, 2); 
+                    ctx.fill();
+                    
+                    // Coat Buttons
+                    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+                    ctx.fillRect(-0.5, -9, 1, 1); ctx.fillRect(-0.5, -6, 1, 1);
+
+                    // Arms
+                    ctx.strokeStyle = coatColor; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    if(e.active) { // Freed: Hands Up!
+                        ctx.moveTo(-4, -9); ctx.lineTo(-8, -15); 
+                        ctx.moveTo(4, -9);  ctx.lineTo(8, -15); 
+                    } else { // Frozen: Arms Down
+                        ctx.moveTo(-4, -9); ctx.lineTo(-5, -1);
+                        ctx.moveTo(4, -9);  ctx.lineTo(5, -1);
+                    }
+                    ctx.stroke();
+
+                    // Head
+                    ctx.fillStyle = '#ffe0b2'; // Skin
+                    ctx.beginPath(); ctx.arc(0, -14, 3.5, 0, Math.PI*2); ctx.fill();
+                    
+                    // Face
+                    ctx.fillStyle = '#000'; 
+                    ctx.fillRect(-1.5, -14, 1, 1); ctx.fillRect(0.5, -14, 1, 1);
+                    
+                    // --- HATS ---
+                    if (hatType === 0) { // BEANIE (Pom-pom)
+                        ctx.fillStyle = hatColor;
+                        ctx.beginPath(); ctx.arc(0, -16, 3.5, Math.PI, 0); ctx.fill();
+                        ctx.beginPath(); ctx.arc(0, -19, 1.5, 0, 6.28); ctx.fill(); // Pom
+                    } 
+                    else if (hatType === 1) { // EARMUFFS
+                        ctx.strokeStyle = hatColor; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.stroke(); // Band
+                        ctx.fillStyle = hatColor;
+                        ctx.beginPath(); ctx.arc(-4, -14, 1.5, 0, 6.28); ctx.fill(); // Left Ear
+                        ctx.beginPath(); ctx.arc(4, -14, 1.5, 0, 6.28); ctx.fill(); // Right Ear
+                    }
+                    else if (hatType === 2) { // HOOD (Fur Trim)
+                        ctx.strokeStyle = coatColor; ctx.lineWidth = 2;
+                        ctx.beginPath(); ctx.arc(0, -14, 4, Math.PI, 0); ctx.stroke();
+                    }
+
+                    // Scarf
+                    ctx.fillStyle = scarfColor; 
+                    ctx.fillRect(-3, -11, 6, 2);
+                    if(e.active) ctx.fillRect(2, -10, 2, 4); // Scarf tail flying if freed
+                };
+
+                // --- DRAWING LOGIC ---
+
+                // STATE A: FREED
                 if(e.active) {
-                    // 1. Water Puddle
+                    // Water Puddle
                     ctx.fillStyle = 'rgba(129, 212, 250, 0.6)';
                     ctx.beginPath(); ctx.ellipse(cx, cy, 40, 18, 0, 0, Math.PI*2); ctx.fill();
                     
-                    // 2. Ice Debris
+                    // Ice Shards
                     ctx.fillStyle = 'rgba(225, 245, 254, 0.8)';
-                    for(let i=0; i<7; i++) {
-                        let sx = cx + Math.sin(i*13)*35;
-                        let sy = cy + Math.cos(i*13)*12;
-                        ctx.beginPath(); ctx.arc(sx, sy, 3, 0, 6.28); ctx.fill();
+                    for(let i=0; i<5; i++) {
+                        let sx = cx + Math.sin(i*2)*30;
+                        let sy = cy + Math.cos(i*2)*10;
+                        ctx.fillRect(sx, sy, 4, 4);
                     }
 
-                    // 3. THE FRIEND (Scale 3.0x)
                     ctx.save();
                     ctx.translate(cx, cy - 5); 
                     let bounce = Math.sin(t/150) * 3;
                     ctx.translate(0, bounce);
                     ctx.scale(3.0, 3.0); 
-
-                    // Legs
-                    ctx.fillStyle = '#37474f'; 
-                    ctx.fillRect(-2.5, 0, 2, 8); ctx.fillRect(0.5, 0, 2, 8); 
-                    // Body
-                    ctx.fillStyle = '#1e88e5'; 
-                    ctx.beginPath();
-                    ctx.moveTo(-4, -11); ctx.lineTo(4, -11); ctx.lineTo(5, 2); ctx.lineTo(-5, 2); ctx.fill();
-                    // Arms (\o/)
-                    ctx.strokeStyle = '#ffe0b2'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-                    ctx.beginPath();
-                    ctx.moveTo(-4, -9); ctx.lineTo(-8, -15); 
-                    ctx.moveTo(4, -9);  ctx.lineTo(8, -15);  
-                    ctx.stroke();
-                    // Head
-                    ctx.fillStyle = '#ffe0b2'; ctx.beginPath(); ctx.arc(0, -14, 3.5, 0, Math.PI*2); ctx.fill();
-                    ctx.fillStyle = '#6d4c41'; ctx.beginPath(); ctx.arc(0, -15, 4, Math.PI, 0); ctx.fill();
-                    // Face
-                    ctx.fillStyle = '#000'; ctx.fillRect(-1.5, -14, 1, 1); ctx.fillRect(0.5, -14, 1, 1);
-                    ctx.fillStyle = '#c62828'; ctx.fillRect(-3, -10, 6, 2); // Scarf
+                    
+                    drawPerson();
 
                     ctx.restore();
 
-                    // 4. Floating Heart
-                    ctx.font = "28px sans-serif";
-                    ctx.fillStyle = "#ff1744";
-                    ctx.shadowColor = "#ff8a80"; ctx.shadowBlur = 10;
-                    ctx.textAlign = "center";
-                    ctx.fillText("❤️", cx, cy - 90 + bounce);
-                    ctx.shadowBlur = 0;
-                    ctx.textAlign = "left";
+                    // Heart
+                    ctx.font = "28px sans-serif"; ctx.fillStyle = "#ff1744"; ctx.textAlign = "center";
+                    ctx.fillText("❤️", cx, cy - 90 + bounce); ctx.textAlign = "left";
                 }
 
-                // --- STATE B: FROZEN (Now HUGE to match) ---
+                // STATE B: FROZEN
                 else {
                     let pulse = Math.sin(t/500) * 3;
 
-                    // 1. THE TRAPPED PERSON (Scaled up to 3.0x)
+                    // 1. Draw Person Inside (Dimmed)
                     ctx.save();
                     ctx.translate(cx, cy); 
-                    
-                    // ** UPDATED SCALE: 3.0x (Matches Freed) **
                     ctx.scale(3.0, 3.0); 
-                    
-                    ctx.fillStyle = '#0d47a1'; // Deep Contrast Blue
-                    
-                    // Drawing relative to 0,0 feet
-                    ctx.fillRect(-2.5, -8, 2, 8); // Legs
-                    ctx.fillRect(0.5, -8, 2, 8);
-                    ctx.fillRect(-4, -20, 8, 12); // Body
-                    
-                    // Arms (Frozen straight down)
-                    ctx.fillRect(-5.5, -20, 1.5, 10);
-                    ctx.fillRect(4, -20, 1.5, 10);
-                    
-                    // Head
-                    ctx.beginPath(); ctx.arc(0, -23, 3.5, 0, Math.PI*2); ctx.fill();
-                    
-                    // Eyes
-                    ctx.fillStyle = '#fff';
-                    ctx.globalAlpha = 0.9 + Math.sin(t/150)*0.1; 
-                    ctx.fillRect(-1.5, -23.5, 1, 1); 
-                    ctx.fillRect(0.5, -23.5, 1, 1);
-                    
+                    ctx.globalAlpha = 0.9; // Slightly visible inside ice
+                    drawPerson();
                     ctx.restore();
 
-                    // 2. THE GIANT ICE CRYSTAL (Expanded Boundaries)
+                    // 2. The Ice Crystal Overlay
                     ctx.save();
                     ctx.translate(cx, cy); 
                     
-                    // Transparent Glassy Look
                     let iceGrad = ctx.createLinearGradient(0, -130, 0, 10);
-                    iceGrad.addColorStop(0, 'rgba(225, 245, 254, 0.25)'); 
-                    iceGrad.addColorStop(0.5, 'rgba(129, 212, 250, 0.20)');
-                    iceGrad.addColorStop(1, 'rgba(41, 182, 246, 0.35)'); 
+                    iceGrad.addColorStop(0, 'rgba(225, 245, 254, 0.4)'); 
+                    iceGrad.addColorStop(0.5, 'rgba(129, 212, 250, 0.3)');
+                    iceGrad.addColorStop(1, 'rgba(41, 182, 246, 0.5)'); 
 
                     ctx.fillStyle = iceGrad;
-                    
-                    // ** UPDATED CRYSTAL SHAPE: Much Taller & Wider **
                     ctx.beginPath();
-                    // Top Tip (Previously -110, now -130 to cover big head)
                     ctx.moveTo(0, -130 + pulse); 
-                    ctx.lineTo(35, -90);         // Top Right
-                    ctx.lineTo(45, -30);         // Mid Right (Wider)
-                    ctx.lineTo(25, 10);          // Base Right
-                    ctx.lineTo(-25, 10);         // Base Left
-                    ctx.lineTo(-45, -30);        // Mid Left
-                    ctx.lineTo(-35, -90);        // Top Left
+                    ctx.lineTo(35, -90); ctx.lineTo(45, -30); 
+                    ctx.lineTo(25, 10); ctx.lineTo(-25, 10); 
+                    ctx.lineTo(-45, -30); ctx.lineTo(-35, -90);
                     ctx.closePath();
                     ctx.fill();
 
-                    // Reflections
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(-20, -100); ctx.lineTo(-30, -50);
-                    ctx.moveTo(18, -105); ctx.lineTo(28, -55);
-                    ctx.stroke();
-
+                    // Ice Reflections
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(-20, -100); ctx.lineTo(-30, -50); ctx.stroke();
+                    
                     // Outline
                     ctx.strokeStyle = '#81d4fa'; ctx.lineWidth = 1; ctx.stroke(); 
-
-                    // Glow
-                    ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 20 + pulse;
-                    ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.fill(); 
-                    
                     ctx.restore();
-                    ctx.shadowBlur = 0;
                 }
             }
 
@@ -6144,65 +6158,60 @@ if(v.type === 'tectonic_rupture') {
 
             let prog = 1 - (v.life / v.maxLife);
             
-            // --- COLOR CYCLE ---
-            // 0% - 20%: Blinding White (Opening)
-            // 20% - 60%: Glowing Orange/Red (Lava)
-            // 60% - 100%: Dark Brown/Black (Cooling Rock)
-            let color, glow, width;
+            // --- OPTIMIZATION: BATCH DRAWING ---
+            // Instead of looping through cracks 3 times, we build the path ONCE
+            // and stroke it 3 times with different styles. This is 10x faster.
             
-            if(prog < 0.2) {
-                color = '#ffffff'; glow = '#fff'; width = 8;
-            } else if(prog < 0.6) {
-                color = '#ff3d00'; glow = '#ffab91'; width = 6;
-            } else {
-                color = '#3e2723'; glow = null; width = 4;
-            }
-
             ctx.save();
             ctx.translate(cx, cy);
             
-            // Draw all 8 Cracks
+            // 1. BUILD THE PATH (All cracks in one go)
+            ctx.beginPath();
             v.cracks.forEach(path => {
-                ctx.beginPath();
                 ctx.moveTo(path[0].x, path[0].y);
                 
-                // Draw line points based on progress (Cracks expand outward)
-                let visibleLength = Math.floor(path.length * (prog * 3)); // Expand fast
+                // Expand outward
+                let visibleLength = Math.floor(path.length * (prog * 3)); 
                 if(visibleLength > path.length) visibleLength = path.length;
 
                 for(let i=1; i<visibleLength; i++) {
                     ctx.lineTo(path[i].x, path[i].y);
                 }
-
-                // Style
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                // 1. Outer Glow (Magma Light)
-                if(glow) {
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = glow;
-                }
-                
-                // 2. The Crack Stroke
-                ctx.strokeStyle = color;
-                ctx.lineWidth = width;
-                ctx.stroke();
-
-                // 3. Inner Core (White hot center for Lava phase)
-                if(prog > 0.2 && prog < 0.6) {
-                    ctx.shadowBlur = 0;
-                    ctx.strokeStyle = '#ffeb3b'; // Yellow center
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
             });
+
+            // 2. STYLE: ROUND LIQUID LOOK
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            // --- LAYER 1: THE "FAKE GLOW" (Atmosphere) ---
+            // A wide, transparent stroke. Costs almost nothing to draw.
+            if(prog < 0.6) {
+                ctx.strokeStyle = 'rgba(255, 87, 34, 0.3)'; // Deep Orange Haze
+                ctx.lineWidth = 18; // Very Wide
+                ctx.stroke();
+            }
+
+            // --- LAYER 2: THE MAGMA (Body) ---
+            // White -> Red -> Dark Rock
+            let color;
+            if(prog < 0.2) color = '#ffffff';      // Flash
+            else if(prog < 0.6) color = '#d50000'; // Lava Red
+            else color = '#3e2723';                // Cooling Rock
+            
+            ctx.strokeStyle = color;
+            ctx.lineWidth = (prog < 0.6) ? 6 : 4;
+            ctx.stroke();
+
+            // --- LAYER 3: THE CORE (Intensity) ---
+            // A thin bright line in the center. Makes it look "hot".
+            if(prog > 0.1 && prog < 0.5) {
+                ctx.strokeStyle = '#ffff00'; // Bright Yellow
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
             
             ctx.restore();
-            ctx.shadowBlur = 0; // Reset
         }
-
-
 
 
 
@@ -6394,16 +6403,20 @@ if(v.type === 'glacial_spike') {
             ctx.scale(v.scale * growth, v.scale * growth); 
             ctx.globalAlpha = alpha;
 
-            // Shadow
-            ctx.fillStyle = 'rgba(0,0,0,0.2)';
-            ctx.beginPath(); ctx.ellipse(0, 0, 15, 6, 0, 0, 6.28); ctx.fill();
+            // --- OPTIMIZATION: FAKE GLOW ---
+            // Draw a soft cyan circle behind the spike. 
+            // This is 100x faster than shadowBlur and looks like "cold mist".
+            ctx.fillStyle = 'rgba(0, 229, 255, 0.3)'; 
+            ctx.beginPath(); 
+            ctx.arc(0, -25, 30, 0, 6.28); 
+            ctx.fill();
 
             // ELSA COLORS (Brighter Cyan/White)
             let cDark = '#00bcd4';   // Cyan Dark
             let cMid = '#4dd0e1';    // Cyan Mid
             let cLight = '#e0f7fa';  // Ice White
             
-            // Spike Body
+            // Spike Body (Main Triangle)
             ctx.beginPath();
             ctx.fillStyle = cDark; ctx.moveTo(-10, 0); ctx.lineTo(0, -50); ctx.lineTo(10, 0); ctx.fill();
             ctx.fillStyle = cMid;  ctx.moveTo(0, 0);   ctx.lineTo(0, -50); ctx.lineTo(10, 0); ctx.fill();
@@ -6414,12 +6427,7 @@ if(v.type === 'glacial_spike') {
             ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-18, -15); ctx.lineTo(-6, 0); ctx.fill();
             ctx.beginPath(); ctx.moveTo(8, 0);   ctx.lineTo(14, -20);  ctx.lineTo(4, 0);  ctx.fill();
 
-            // Magical Glow (Optimized: No ShadowBlur)
-            // 1. Draw a faint blue circle behind to fake the glow
-            ctx.fillStyle = 'rgba(0, 229, 255, 0.4)'; 
-            ctx.beginPath(); ctx.arc(0, -40, 8, 0, 6.28); ctx.fill();
-            
-            // 2. Draw the white core
+            // Inner White Core (The "Shiny" reflection)
             ctx.fillStyle = '#fff';
             ctx.fillRect(-2, -45, 4, 10);
 
@@ -6436,11 +6444,27 @@ if(v.type === 'glacial_spike') {
 
 
 
-
 if(v.type === 'explosion_cloud') {
             let cx = x + 25;
             let cy = y + 40;
 
+            // --- OPTIMIZATION: HEAT HALO ---
+            // Instead of blurring 40 individual puffs, we draw ONE big glow behind them.
+            // This looks just as hot but is virtually free for the CPU.
+            let prog = 1 - (v.life / v.maxLife);
+            
+            if(prog < 0.5) {
+                ctx.save();
+                ctx.translate(cx, cy - (prog * 60)); // Rise with the cloud
+                ctx.fillStyle = `rgba(255, 87, 34, ${0.5 * (1 - prog * 2)})`; // Fading Orange
+                ctx.beginPath();
+                // A large soft circle behind the explosion
+                ctx.arc(0, 0, 50 + (prog * 40), 0, 6.28);
+                ctx.fill();
+                ctx.restore();
+            }
+
+            // --- DRAW CLOUD PUFFS ---
             v.puffs.forEach(p => {
                 // Physics: Move & Slow Down
                 p.x += p.vx; 
@@ -6448,10 +6472,9 @@ if(v.type === 'explosion_cloud') {
                 p.vx *= 0.85; // Air resistance
                 p.vy *= 0.85;
 
-                let prog = 1 - (v.life / v.maxLife);
                 let alpha = 1.0;
                 
-                // COLOR: White -> Yellow -> Orange -> Red -> Black
+                // COLOR LOGIC: White -> Yellow -> Orange -> Red -> Black
                 let color;
                 if(prog < 0.15) {
                     color = '#ffffff'; // FLASH
@@ -6469,7 +6492,6 @@ if(v.type === 'explosion_cloud') {
                 ctx.save();
                 ctx.translate(cx + p.x, cy + p.y - (prog * 60)); // Mushroom cloud rise
                 
-                // Grow: 0.5x to 4.0x size
                 let scale = 0.5 + (prog * 3.5); 
                 ctx.scale(scale, scale);
                 ctx.rotate(p.rot); 
@@ -6482,22 +6504,14 @@ if(v.type === 'explosion_cloud') {
                 ctx.arc(0, 0, p.r, 0, 6.28);
                 ctx.arc(p.r*0.6, p.r*0.4, p.r*0.7, 0, 6.28);
                 ctx.arc(-p.r*0.5, p.r*0.5, p.r*0.6, 0, 6.28);
-                ctx.arc(0, -p.r*0.6, p.r*0.8, 0, 6.28);
                 ctx.fill();
 
-                // Inner Glow (Hot Core)
-                if(prog < 0.4) {
-                    ctx.shadowColor = color;
-                    ctx.shadowBlur = 15;
-                    ctx.fill();
-                    ctx.shadowBlur = 0;
-                }
-
+                // REMOVED: The expensive inner glow logic inside the loop
+                
                 ctx.restore();
             });
             ctx.globalAlpha = 1.0;
         }
-
 
 
 
@@ -6987,21 +7001,26 @@ function drawFarmMob(x, y, m) {
 
 function drawMob(x, y, m) {
     let b = Math.sin(Date.now()/200)*3;
-    // REPLACE THE OLD "let sc = ..." LINE WITH THIS BLOCK:
-    let sc = 1.4; // Default size for normal mobs
-    if (m.boss) {
-        if (m.name === "Chaos Titan") sc = 3.0;       // Titan is Huge
-        else if (m.name.includes("Dragon")) sc = 2.6; // Dragon is Very Big
-        else if (m.name.includes("Hydra")) sc = 2.6;  // Hydra is Very Big
-        else sc = 1.8;                                // Other bosses (Slime/Scorpion)
-    }
-     
-    
-    // Scale from the center of the tile
-    ctx.save(); ctx.translate(x+25, y+25); ctx.scale(sc, sc); ctx.translate(-(x+25), -(y+25));
 
-    let tint = null;
-    const now = Date.now();
+    // --- 1. SETUP SCALE & LIFT ---
+    let sc = 1.4; 
+    let yLift = 0; 
+
+    if (m.boss) {
+        if (m.name === "Chaos Titan") { sc = 3.0; yLift = 75; }
+        else if (m.name.includes("Dragon")) { sc = 2.6; yLift = 50; }
+        else if (m.name.includes("Hydra")) { sc = 2.6; yLift = 45; }
+        else { sc = 1.8; yLift = 20; }
+    }
+    
+    // --- 2. APPLY TRANSFORM ---
+    ctx.save(); 
+    // Move to center, apply Lift, Scale, move back
+    ctx.translate(x+25, y+25 - yLift); 
+    ctx.scale(sc, sc); 
+    ctx.translate(-(x+25), -(y+25));
+
+    let tint = null;    const now = Date.now();
     if(m.status.burn > now) tint = '#e74c3c'; 
     else if(m.status.freeze > now) tint = '#4fc3f7'; 
     else if(m.status.poison > 0) tint = '#8e44ad'; 
@@ -7019,171 +7038,200 @@ function drawMob(x, y, m) {
 
     // --- MONSTER DRAWING (All Y coordinates shifted -10px to -15px) ---
 
-    if(m.name.includes('Boar')) {
-        ctx.fillStyle= tint || '#8d6e63'; 
-        ctx.beginPath(); ctx.ellipse(x+25, y+20-b, 20, 14, 0, 0, 6.28); ctx.fill(); // y+30 -> y+20
-        ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(x+10,y+25-b); ctx.lineTo(x+5,y+15-b); ctx.lineTo(x+15,y+20-b); ctx.fill(); 
-        ctx.fillStyle= tint || '#3e2723'; 
-        ctx.fillRect(x+15,y+28-b,4,6); ctx.fillRect(x+30,y+28-b,4,6); 
-        drawEyes(x+12, y+18-b);
-    }
-    else if(m.name==='Ent') {
-        ctx.fillStyle= tint || '#4e342e'; 
-        ctx.fillRect(x+15, y+0-b, 20, 35); // y+10 -> y+0
-        ctx.fillStyle= tint || '#76d7c4'; 
-        ctx.beginPath(); ctx.arc(x+15, y-5-b, 10, 0, 6.28); ctx.fill(); 
-        ctx.beginPath(); ctx.arc(x+35, y-5-b, 10, 0, 6.28); ctx.fill();
-        ctx.beginPath(); ctx.arc(x+25, y-15-b, 12, 0, 6.28); ctx.fill();
-        ctx.fillStyle = '#ffeb3b';
-        ctx.fillRect(x+20, y+10-b, 3, 3); ctx.fillRect(x+26, y+10-b, 3, 3);
-    }
-    else if(m.name.includes('Scorpion')) {
-        ctx.fillStyle= tint || '#212121'; 
-        ctx.beginPath(); ctx.ellipse(x+25,y+25-b,15,10,0,0,6.28); ctx.fill(); // y+35 -> y+25
-        ctx.lineWidth=3; ctx.strokeStyle= tint || '#212121'; 
-        ctx.beginPath(); ctx.moveTo(x+35,y+20-b); ctx.quadraticCurveTo(x+50,y+0-b,x+35,y+0-b); ctx.stroke(); 
-        ctx.fillStyle='#c0392b'; ctx.fillRect(x+33, y-2-b, 4,4); 
-        ctx.fillStyle='#212121';
-        ctx.beginPath(); ctx.arc(x+10, y+20-b, 5, 0, 6.28); ctx.fill();
-        ctx.beginPath(); ctx.arc(x+40, y+20-b, 5, 0, 6.28); ctx.fill();
-        drawEyes(x+20, y+25-b); drawEyes(x+28, y+25-b);
-    }
-    else if(m.name==='Mummy') {
-        ctx.fillStyle= tint || '#e0e0e0'; 
-        ctx.fillRect(x+18, y+5-b, 14, 30); // y+15 -> y+5
-        ctx.strokeStyle = '#757575'; ctx.lineWidth=1; ctx.strokeRect(x+18, y+5-b, 14, 30);
-        ctx.fillStyle= tint || '#9e9e9e'; 
-        ctx.fillRect(x+18, y+10-b, 14, 2); ctx.fillRect(x+18, y+18-b, 14, 2);
-        drawEyes(x+20, y+8-b); drawEyes(x+26, y+8-b);
-    }
-    else if(m.name==='Stone Golem') {
-        ctx.fillStyle = tint || '#78909c'; 
-        ctx.fillRect(x+15, y+5-b, 20, 25); // y+15 -> y+5
-        ctx.fillStyle = '#546e7a';
-        ctx.fillRect(x+10, y+8-b, 5, 20); ctx.fillRect(x+35, y+8-b, 5, 20);
-        ctx.fillRect(x+18, y-5-b, 14, 10);
-        ctx.fillStyle = '#00e5ff'; ctx.shadowColor='#00e5ff'; ctx.shadowBlur=5;
-        ctx.fillRect(x+20, y-2-b, 4, 3); ctx.fillRect(x+26, y-2-b, 4, 3);
-        ctx.shadowBlur=0;
-    }
-    else if(m.name==='Cinder Wolf') {
-        ctx.fillStyle = tint || '#111';
-        ctx.beginPath(); ctx.ellipse(x+25, y+20-b, 18, 10, 0, 0, 6.28); ctx.fill(); // y+30 -> y+20
-        ctx.beginPath(); ctx.moveTo(x+35, y+15-b); ctx.lineTo(x+45, y+10-b); ctx.lineTo(x+40, y+25-b); ctx.fill();
-        let f = Math.sin(Date.now()/50)*3;
-        ctx.fillStyle = '#ff3d00'; ctx.shadowColor='#ff3d00'; ctx.shadowBlur=10;
-        ctx.beginPath(); ctx.moveTo(x+10, y+15-b); ctx.lineTo(x+5, y+5-b+f); ctx.lineTo(x+15, y+10-b); ctx.fill(); 
-        ctx.beginPath(); ctx.moveTo(x+20, y+10-b); ctx.lineTo(x+25, y+0-b-f); ctx.lineTo(x+30, y+10-b); ctx.fill(); 
-        ctx.shadowBlur=0;
-        ctx.fillStyle = '#f00'; ctx.fillRect(x+40, y+12-b, 2, 2);
-    }
 
 
 
 
-    // REPLACES THE CHAOS TITAN BLOCK (The Barbarian Design)
-    else if(m.name === 'Chaos Titan') {
-        // Animation: Heavy breathing (Shoulders rise and fall)
-        let breath = Math.sin(Date.now() / 250) * 1.5;
-        // Animation: Arm sway
-        let sway = Math.sin(Date.now() / 400) * 2;
 
-        // 1. THE GIANT CLUB (Held in back hand, resting on ground)
-        // Drawn first so it is behind the body
+
+
+   if(m.name.includes('Boar')) {
+        let faceDir = (m.x < S.p.x) ? -1 : 1; 
+
         ctx.save();
-        ctx.translate(x + 50, y + 25); 
-        ctx.rotate(0.2 + sway * 0.05); 
-        
-        // Handle
-        ctx.fillStyle = '#5d4037'; // Wood
-        ctx.fillRect(-20, -10, 8, 50); 
-        // Spiked Head
-        ctx.fillStyle = '#212121'; // Iron
-        ctx.fillRect(-25, -25, 18, 25);
-        // Spikes
-        ctx.fillStyle = '#cfd8dc';
-        ctx.beginPath(); ctx.moveTo(-25, -15); ctx.lineTo(-30, -12); ctx.lineTo(-25, -10); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(-7, -20); ctx.lineTo(0, -18); ctx.lineTo(-7, -15); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(-16, -25); ctx.lineTo(-14, -32); ctx.lineTo(-12, -25); ctx.fill();
-        ctx.restore();
+        ctx.translate(x+25, y+25); 
+        ctx.scale(faceDir, 1); 
 
-        // 2. LEGS (Sturdy Stance)
-        ctx.fillStyle = '#263238'; // Dark Pants
-        // Left
-        ctx.fillRect(x + 10, y + 35 - b, 12, 15);
-        // Right
-        ctx.fillRect(x + 35, y + 35 - b, 12, 15);
-        // Boots
-        ctx.fillStyle = '#111';
-        ctx.fillRect(x + 8, y + 45 - b, 14, 5);
-        ctx.fillRect(x + 35, y + 45 - b, 14, 5);
+        // --- ANIMATION FIX: Position based ---
+        // If x/y don't change, 'walk' stays constant. Legs stop moving!
+        let walk = Math.sin((m.x + m.y) * 0.8) * 4;
 
-        // 3. LOINCLOTH (Fur)
-        ctx.fillStyle = '#5d4037'; 
-        ctx.beginPath();
-        ctx.moveTo(x + 15, y + 35 - b);
-        ctx.lineTo(x + 42, y + 35 - b);
-        ctx.lineTo(x + 28, y + 48 - b + sway); // Swings slightly
-        ctx.fill();
-
-        // 4. TORSO (V-Shape Muscle)
-        ctx.fillStyle = tint || '#37474f'; // Grey Skin
-        ctx.beginPath();
-        ctx.moveTo(x + 5, y + 10 - b + breath);  // Left Shoulder
-        ctx.lineTo(x + 52, y + 10 - b + breath); // Right Shoulder
-        ctx.lineTo(x + 35, y + 38 - b); // Right Waist
-        ctx.lineTo(x + 22, y + 38 - b); // Left Waist
-        ctx.fill();
-
-        // 5. WAR PAINT (Red Stripes)
-        ctx.fillStyle = '#b71c1c';
-        ctx.beginPath();
-        ctx.moveTo(x + 40, y + 12 - b + breath);
-        ctx.lineTo(x + 30, y + 25 - b + breath);
-        ctx.lineTo(x + 35, y + 25 - b + breath);
-        ctx.fill();
-
-        // 6. ARMOR: SPIKED PAULDRONS (Shoulders)
-        ctx.fillStyle = '#111';
-        // Left Pad
-        ctx.beginPath(); ctx.moveTo(x+5, y+15-b+breath); ctx.lineTo(x-5, y+5-b+breath); ctx.lineTo(x+15, y+5-b+breath); ctx.fill();
-        // Right Pad
-        ctx.beginPath(); ctx.moveTo(x+52, y+15-b+breath); ctx.lineTo(x+62, y+5-b+breath); ctx.lineTo(x+42, y+5-b+breath); ctx.fill();
-        // Spikes on pads
-        ctx.fillStyle = '#cfd8dc';
-        ctx.beginPath(); ctx.moveTo(x+5, y+5-b+breath); ctx.lineTo(x+5, y-5-b+breath); ctx.lineTo(x+10, y+5-b+breath); ctx.fill();
-
-        // 7. ARMS (Muscular)
-        ctx.fillStyle = tint || '#37474f';
-        // Left Arm (Fist clenched)
-        ctx.fillRect(x - 2, y + 15 - b + breath, 10, 20);
-        ctx.fillStyle = '#111'; // Gauntlet
-        ctx.fillRect(x - 4, y + 32 - b + breath, 14, 10);
-        
-        // Right Arm (Holding Club)
-        ctx.fillStyle = tint || '#37474f';
-        ctx.fillRect(x + 48, y + 15 - b + breath, 10, 20);
-        ctx.fillStyle = '#111'; // Gauntlet
-        ctx.fillRect(x + 46, y + 32 - b + breath, 14, 10);
-
-        // 8. HEAD (Iron Helmet)
-        // Small head relative to body = Look stronger
-        let headY = y - 2 - b + breath;
+        // 1. BACK LEGS (Darker)
         ctx.fillStyle = '#212121'; 
-        ctx.fillRect(x + 20, headY, 18, 16);
-        
-        // Helmet Horns
-        ctx.fillStyle = '#ffd700';
-        ctx.beginPath(); ctx.moveTo(x+20, headY+5); ctx.lineTo(x+15, headY-5); ctx.lineTo(x+22, headY+2); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(x+38, headY+5); ctx.lineTo(x+43, headY-5); ctx.lineTo(x+36, headY+2); ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(-10 + walk, 12, 4, 6, 0, 0, 6.28); // Back L
+        ctx.ellipse(10 - walk, 12, 4, 6, 0, 0, 6.28);  // Front L
+        ctx.fill();
 
-        // SINGLE GLOWING EYE SLIT (The Cyclops element, but menacing)
-        ctx.fillStyle = '#000';
-        ctx.fillRect(x + 24, headY + 5, 10, 4); // Visor slit
+        // 2. MAIN BODY (Heavy, Dark Fur)
+        // Dark Grey to contrast Green Grass
+        ctx.fillStyle = tint || '#424242'; 
+        ctx.beginPath();
+        // Teardrop shape: Big chest, small hip
+        ctx.moveTo(-15, 5); 
+        ctx.bezierCurveTo(-20, -15, 10, -20, 18, 0); // Top curve
+        ctx.quadraticCurveTo(20, 12, -15, 12);       // Bottom curve
+        ctx.fill();
+
+        // 3. FRONT LEGS (Lighter)
+        ctx.fillStyle = '#616161'; 
+        ctx.beginPath();
+        ctx.ellipse(-6 - walk, 14, 4, 6, 0, 0, 6.28); // Back R
+        ctx.ellipse(14 + walk, 14, 4, 6, 0, 0, 6.28); // Front R
+        ctx.fill();
+
+        // 4. MANE (The Mohawk)
+        ctx.fillStyle = '#212121';
+        ctx.beginPath();
+        ctx.moveTo(-10, -10);
+        ctx.lineTo(-5, -18); ctx.lineTo(0, -12);
+        ctx.lineTo(5, -20);  ctx.lineTo(10, -12);
+        ctx.lineTo(18, -5);  ctx.lineTo(-12, -5);
+        ctx.fill();
+
+        // 5. SNOUT & FACE
+        ctx.fillStyle = '#8d6e63'; // Brown snout
+        ctx.beginPath(); ctx.ellipse(-18, 2, 6, 5, 0, 0, 6.28); ctx.fill();
+        ctx.fillStyle = '#000'; // Nose tip
+        ctx.beginPath(); ctx.ellipse(-22, 2, 2, 4, 0, 0, 6.28); ctx.fill();
+
+        // 6. TUSK (The defining feature)
+        ctx.fillStyle = '#fff'; 
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(-16, 5);
+        ctx.quadraticCurveTo(-14, -5, -22, -8); // Curve Up
+        ctx.lineTo(-20, -2);
+        ctx.fill(); ctx.stroke();
+
+        // 7. EYE (Angry Red)
+        ctx.fillStyle = '#ff1744';
+        ctx.beginPath(); ctx.arc(-12, -2, 2.5, 0, 6.28); ctx.fill();
+
+        ctx.restore(); 
+    }
+
+
+
+
+
+
+
+
+    else if(m.name==='Ent') {
+        // Trunk (Textured)
+        ctx.fillStyle = tint || '#4e342e'; 
+        ctx.fillRect(x+15, y+5-b, 20, 35);
+        // Bark Texture
+        ctx.fillStyle = '#3e2723';
+        ctx.fillRect(x+18, y+10-b, 2, 8); ctx.fillRect(x+28, y+25-b, 3, 10);
+
+        // Leaves (Foliage Afro)
+        ctx.fillStyle = tint || '#2e7d32'; 
+        ctx.beginPath(); ctx.arc(x+15, y-5-b, 12, 0, 6.28); ctx.fill(); 
+        ctx.beginPath(); ctx.arc(x+35, y-5-b, 12, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+25, y-15-b, 15, 0, 6.28); ctx.fill();
         
-        ctx.fillStyle = '#ff1744'; // Red Glow
-        ctx.shadowColor = '#f00'; ctx.shadowBlur = 10;
-        ctx.fillRect(x + 27, headY + 5, 4, 4); // The Eye
+        // Glowing Eyes (Magic Wood)
+        ctx.fillStyle = '#76ff03'; ctx.shadowColor='#76ff03'; ctx.shadowBlur=5;
+        ctx.fillRect(x+20, y+12-b, 4, 4); ctx.fillRect(x+28, y+12-b, 4, 4);
+        ctx.shadowBlur=0;
+        
+        // Branch Arms
+        ctx.strokeStyle = '#4e342e'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(x+15, y+15-b); ctx.lineTo(x+5, y+25-b); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x+35, y+15-b); ctx.lineTo(x+45, y+25-b); ctx.stroke();
+    }
+
+
+
+
+
+
+
+
+
+
+    else if(m.name.includes('Scorpion')) {
+        let isKing = m.boss || m.name.includes('King');
+        
+        // CONTRAST COLORS:
+        // Background is SAND (#fff59d). 
+        // We use BLACK (#1a1a1a) and RED/GOLD to stand out.
+        let shellColor = isKing ? '#212121' : '#3e2723'; // Black vs Dark Brown
+        let trimColor  = isKing ? '#ffd700' : '#8d6e63'; // Gold vs Lighter Brown
+        let stingColor = isKing ? '#f50057' : '#d84315'; // Neon Pink vs Orange
+
+        // Legs (Spiky and Dark)
+        ctx.strokeStyle = '#000'; 
+        ctx.lineWidth = isKing ? 4 : 2;
+        ctx.lineCap = 'round';
+        
+        for(let i=0; i<4; i++) {
+            let legMove = Math.sin(Date.now()/150 + i) * 3;
+            // Left
+            ctx.beginPath(); 
+            ctx.moveTo(x+20, y+25-b); 
+            ctx.lineTo(x+5, y+20-b+(i*6));  // Knee out
+            ctx.lineTo(x-2, y+35-b+(i*6)+legMove); // Foot down
+            ctx.stroke();
+            // Right
+            ctx.beginPath(); 
+            ctx.moveTo(x+30, y+25-b); 
+            ctx.lineTo(x+45, y+20-b+(i*6)); 
+            ctx.lineTo(x+52, y+35-b+(i*6)+legMove); 
+            ctx.stroke();
+        }
+
+        // Body (Armor Plates)
+        ctx.fillStyle = tint || shellColor;
+        ctx.strokeStyle = trimColor; ctx.lineWidth = 2;
+        
+        // Thorax
+        ctx.beginPath(); ctx.ellipse(x+25, y+25-b, 14, 16, 0, 0, 6.28); 
+        ctx.fill(); ctx.stroke();
+        
+        // Armor Segment Pattern
+        ctx.fillStyle = trimColor;
+        ctx.beginPath(); ctx.moveTo(x+25, y+10-b); ctx.lineTo(x+32, y+25-b); ctx.lineTo(x+18, y+25-b); ctx.fill();
+
+        // Claws (Massive and Heavy)
+        const drawClaw = (cx, cy, ang) => {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(ang);
+            // Arm
+            ctx.fillStyle = '#000'; ctx.fillRect(-4, -15, 8, 15);
+            // Pincer
+            ctx.fillStyle = tint || shellColor;
+            ctx.strokeStyle = trimColor; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 10, 0, Math.PI, true); 
+            ctx.lineTo(-5, 18); ctx.lineTo(0, 8); ctx.lineTo(5, 18); // Sharp tips
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+        };
+        let sway = Math.sin(Date.now()/300) * 0.3;
+        drawClaw(x+5, y+25-b, 0.6 + sway); 
+        drawClaw(x+45, y+25-b, -0.6 - sway);
+
+        // Tail (Vertebrae Look)
+        ctx.fillStyle = shellColor;
+        for(let i=0; i<5; i++) {
+            let tx = x+25 + Math.sin(i*0.5)*5;
+            let ty = (y+5-b) - (i*6); // Going UP
+            ctx.beginPath(); ctx.arc(tx, ty, 6-(i*0.5), 0, 6.28); ctx.fill();
+        }
+
+        // Stinger (Glowing)
+        ctx.fillStyle = stingColor;
+        ctx.shadowColor = stingColor; ctx.shadowBlur = 10;
+        ctx.beginPath(); 
+        ctx.moveTo(x+25, y-25-b); 
+        ctx.lineTo(x+18, y-15-b); 
+        ctx.lineTo(x+32, y-15-b); 
+        ctx.fill();
         ctx.shadowBlur = 0;
     }
 
@@ -7192,58 +7240,764 @@ function drawMob(x, y, m) {
 
 
 
+    else if(m.name==='Mummy') {
+        // Outline (Dusty)
+        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 1;
+        
+        // Body (Wrapped)
+        ctx.fillStyle = tint || '#e0e0e0'; 
+        ctx.fillRect(x+18, y+5-b, 14, 32); 
+        
+        // Bandage Lines (Stripes)
+        ctx.fillStyle = '#bdbdbd';
+        for(let i=0; i<6; i++) {
+            ctx.fillRect(x+18, y+8-b + (i*5), 14, 1);
+        }
+        
+        // Head (Wrapped)
+        ctx.fillStyle = tint || '#eeeeee';
+        ctx.fillRect(x+16, y-5-b, 18, 14);
+        
+        // Eyes (Hollow Dark with Glow)
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x+18, y-2-b, 14, 4); // Eye slit
+        ctx.fillStyle = '#ffeb3b'; // Glowing dots
+        ctx.shadowColor='#ffeb3b'; ctx.shadowBlur=5;
+        ctx.fillRect(x+20, y-1-b, 2, 2); ctx.fillRect(x+28, y-1-b, 2, 2);
+        ctx.shadowBlur=0;
+        
+        // Arms (Zombie pose)
+        ctx.fillStyle = '#e0e0e0';
+        ctx.fillRect(x+10, y+12-b, 8, 4); // Left
+        ctx.fillRect(x+32, y+12-b, 8, 4); // Right
+    }
+
+
+
+
+
+
+
+
+   else if(m.name==='Stone Golem') {
+        let hover = Math.sin(Date.now()/300) * 2;
+        
+        // 1. Floating Boulders (Shoulders)
+        // They float independent of body to look magical
+        ctx.fillStyle = tint || '#78909c'; // Blue Grey Stone
+        
+        // Left Shoulder
+        ctx.fillRect(x+5, y+5-b-hover, 12, 15);
+        ctx.strokeStyle = '#37474f'; ctx.lineWidth = 2; ctx.strokeRect(x+5, y+5-b-hover, 12, 15);
+        
+        // Right Shoulder
+        ctx.fillRect(x+33, y+5-b+hover, 12, 15);
+        ctx.strokeRect(x+33, y+5-b+hover, 12, 15);
+
+        // 2. Main Torso (Heavy Block)
+        ctx.fillStyle = '#546e7a'; 
+        ctx.fillRect(x+15, y+10-b, 20, 25);
+        
+        // 3. Rune Carving (Glowing Chest)
+        ctx.fillStyle = '#00e5ff'; // Cyan Rune
+        ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 10;
+        ctx.beginPath(); 
+        ctx.moveTo(x+25, y+15-b); 
+        ctx.lineTo(x+20, y+22-b); ctx.lineTo(x+30, y+22-b); 
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 4. Head (Floating slightly above)
+        ctx.fillStyle = '#78909c';
+        ctx.fillRect(x+20, y-2-b, 10, 10);
+        // Eye (Single Cyclops Line)
+        ctx.fillStyle = '#ff1744'; 
+        ctx.fillRect(x+22, y+2-b, 6, 2);
+
+        // 5. Heavy Fists (Ground dragging)
+        ctx.fillStyle = '#37474f';
+        ctx.fillRect(x+8, y+25-b-hover, 8, 10); // L
+        ctx.fillRect(x+34, y+25-b+hover, 8, 10); // R
+    }
+
+
+
+
+
+   else if(m.name==='Cinder Wolf') {
+        // 1. DIRECTION LOGIC (Fixed & Safe)
+        // If mob is Left of player, Face Right (1). 
+        // If mob is Right of player, Face Left (-1).
+        let faceDir = (m.x < S.p.x) ? 1 : -1;
+        
+        let run = Math.sin(Date.now()/100) * 4;
+        let breathe = Math.sin(Date.now()/200) * 1.5;
+
+        ctx.save();
+        // A. Move to CENTER of tile (Fixes offset bug)
+        ctx.translate(x+25, y+25);
+        // B. Flip axis
+        ctx.scale(faceDir, 1);
+
+        // --- DRAWING STARTS AT (0,0) ---
+
+        // 2. SHADOW
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(0, 18, 14, 4, 0, 0, 6.28); ctx.fill();
+
+        // 3. BACK LEGS (Darker)
+        ctx.fillStyle = '#1a1a1a'; 
+        // Hip
+        ctx.beginPath(); ctx.arc(-12, 5, 6, 0, 6.28); ctx.fill();
+        // Leg
+        ctx.beginPath(); 
+        ctx.moveTo(-12, 5); ctx.lineTo(-18-run, 15); ctx.lineTo(-14-run, 15); ctx.lineTo(-8, 8); 
+        ctx.fill();
+
+        // 4. MAIN BODY (Jagged Obsidian)
+        ctx.fillStyle = tint || '#212121'; 
+        ctx.beginPath();
+        // Chest
+        ctx.moveTo(10, 5 + breathe); 
+        ctx.lineTo(15, -5 + breathe); // Neck base
+        ctx.lineTo(5, -8 + breathe);  // Shoulder
+        ctx.lineTo(-5, -5);           // Back
+        ctx.lineTo(-15, 0);           // Hip
+        ctx.lineTo(-10, 10);          // Flank
+        ctx.lineTo(5, 12 + breathe);  // Belly
+        ctx.fill();
+
+        // 5. MAGMA RIBS (Glowing Core)
+        ctx.strokeStyle = '#ff3d00'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.shadowColor = '#ff3d00'; ctx.shadowBlur = 5;
+        ctx.beginPath();
+        ctx.moveTo(8, 0 + breathe); ctx.lineTo(4, 5 + breathe);
+        ctx.moveTo(2, -2 + breathe); ctx.lineTo(-2, 4 + breathe);
+        ctx.moveTo(-4, -2); ctx.lineTo(-8, 3);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // 6. FRONT LEGS
+        ctx.fillStyle = '#263238'; 
+        ctx.beginPath(); 
+        ctx.moveTo(8, 5+breathe); ctx.lineTo(12+run, 18); ctx.lineTo(8+run, 18); ctx.lineTo(2, 8+breathe); 
+        ctx.fill();
+
+        // 7. SPIKY MANE (Fire)
+        ctx.fillStyle = '#d50000'; 
+        ctx.beginPath();
+        ctx.moveTo(12, -5 + breathe);
+        ctx.lineTo(10, -15 + breathe); ctx.lineTo(6, -8 + breathe);
+        ctx.lineTo(0, -18 + breathe);  ctx.lineTo(-2, -6);
+        ctx.lineTo(-10, -12);          ctx.lineTo(-8, -2);
+        ctx.fill();
+
+        // 8. HEAD (Wolf Profile)
+        ctx.fillStyle = '#212121'; 
+        ctx.beginPath();
+        ctx.moveTo(14, -4 + breathe);
+        ctx.lineTo(24, 2 + breathe); // Snout
+        ctx.lineTo(22, 8 + breathe); // Jaw
+        ctx.lineTo(12, 6 + breathe); // Cheek
+        ctx.fill();
+
+        // Ear
+        ctx.beginPath(); ctx.moveTo(14, -4 + breathe); ctx.lineTo(12, -12 + breathe); ctx.lineTo(18, -6 + breathe); ctx.fill();
+
+        // 9. EYE (Evil Red)
+        ctx.fillStyle = '#ffea00'; 
+        ctx.shadowColor = '#f00'; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.arc(18, 0 + breathe, 2, 0, 6.28); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 10. TAIL (Wagging)
+        let wag = Math.sin(Date.now()/100) * 2;
+        ctx.strokeStyle = '#212121'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(-15, 0); ctx.quadraticCurveTo(-25, -5+wag, -22, 5+wag); ctx.stroke();
+
+        ctx.restore();
+    }
+
+
+
+
+    // REPLACES THE CHAOS TITAN BLOCK (The Barbarian Design)
+    else if(m.name === 'Chaos Titan') {
+        let t = Date.now();
+        let breath = Math.sin(t / 300) * 1.5;
+        let glow = 0.5 + Math.abs(Math.sin(t / 500)) * 0.5; // Pulsing light
+
+        // 1. LIVING CAPE (Smoke & Fire)
+        // Drawn first so it is behind him
+        ctx.save();
+        ctx.translate(x+25, y+20);
+        let capeSway = Math.sin(t/400) * 3;
+        
+        // Smoke base
+        ctx.fillStyle = 'rgba(33, 33, 33, 0.8)';
+        ctx.beginPath();
+        ctx.moveTo(-15, 0); 
+        ctx.quadraticCurveTo(-25 - capeSway, 30, -20 + capeSway, 50); // Left edge
+        ctx.lineTo(20 + capeSway, 50); 
+        ctx.quadraticCurveTo(25 + capeSway, 30, 15, 0); // Right edge
+        ctx.fill();
+        
+        // Burning edges
+        ctx.strokeStyle = '#d50000'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-15, 0); ctx.lineTo(-20 + capeSway, 50);
+        ctx.moveTo(15, 0); ctx.lineTo(20 + capeSway, 50);
+        ctx.stroke();
+        ctx.restore();
+
+        // 2. THE WEAPON ("World Breaker" Greatsword)
+        // Resting on right shoulder, pointing up/left
+        ctx.save();
+        ctx.translate(x+45, y+25+breath); // Shoulder pivot
+        ctx.rotate(-0.4); // Angle
+        
+        // Blade (Massive Slab)
+        ctx.fillStyle = '#212121'; // Obsidian
+        ctx.beginPath();
+        ctx.moveTo(-10, -50); ctx.lineTo(10, -50); // Tip width
+        ctx.lineTo(8, 20); ctx.lineTo(-8, 20); // Base
+        ctx.lineTo(0, -65); // Sharp Tip
+        ctx.fill();
+        
+        // Magma Crack in Blade
+        ctx.strokeStyle = `rgba(255, 61, 0, ${glow})`; 
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 15); ctx.lineTo(-3, 0); ctx.lineTo(2, -20); ctx.lineTo(0, -45); ctx.stroke();
+        
+        // Guard & Hilt
+        ctx.fillStyle = '#424242'; ctx.fillRect(-12, 15, 24, 6); // Crossguard
+        ctx.fillStyle = '#5d4037'; ctx.fillRect(-3, 21, 6, 15); // Handle
+        ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(0, 38, 4, 0, 6.28); ctx.fill(); // Pommel
+        ctx.restore();
+
+        // 3. LEGS (Heavy Plate Armor)
+        // Dark Blue-Grey to contrast floor
+        let armorColor = '#37474f'; 
+        let trimColor = '#ffd700'; // Gold Trim
+
+        ctx.fillStyle = armorColor;
+        // Left Leg
+        ctx.fillRect(x+10, y+35-b, 12, 15);
+        // Right Leg
+        ctx.fillRect(x+35, y+35-b, 12, 15);
+        
+        // Boots (Spiked)
+        ctx.fillStyle = '#111';
+        ctx.beginPath(); ctx.moveTo(x+8, y+45-b); ctx.lineTo(x+22, y+45-b); ctx.lineTo(x+15, y+52-b); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x+35, y+45-b); ctx.lineTo(x+49, y+45-b); ctx.lineTo(x+42, y+52-b); ctx.fill();
+
+        // 4. ARMORED SKIRT (Tassets)
+        // Instead of loincloth, metal plates hanging down
+        ctx.fillStyle = '#263238'; // Darker plate
+        ctx.beginPath();
+        ctx.moveTo(x+15, y+35-b); ctx.lineTo(x+42, y+35-b); // Waist
+        ctx.lineTo(x+38, y+48-b+breath); // Bottom R
+        ctx.lineTo(x+28, y+42-b+breath); // Center notch
+        ctx.lineTo(x+19, y+48-b+breath); // Bottom L
+        ctx.fill();
+        
+        // Gold Trim on Skirt
+        ctx.strokeStyle = trimColor; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x+19, y+48-b+breath); ctx.lineTo(x+15, y+35-b); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x+38, y+48-b+breath); ctx.lineTo(x+42, y+35-b); ctx.stroke();
+
+        // 5. TORSO (Massive V-Shape Armor)
+        ctx.fillStyle = armorColor;
+        ctx.beginPath();
+        ctx.moveTo(x+5, y+10-b+breath);  // L Shoulder
+        ctx.lineTo(x+52, y+10-b+breath); // R Shoulder
+        ctx.lineTo(x+35, y+38-b);        // R Waist
+        ctx.lineTo(x+22, y+38-b);        // L Waist
+        ctx.fill();
+
+        // 6. THE CHAOS CORE (Glowing Chest)
+        ctx.fillStyle = `rgba(255, 111, 0, ${glow})`; // Pulsing Orange
+        ctx.shadowColor = '#ff6f00'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x+28.5, y+22-b+breath, 5, 0, 6.28); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 7. PAULDRONS (Shoulder Spikes)
+        ctx.fillStyle = '#111'; // Black spikes
+        // Left
+        ctx.beginPath(); ctx.moveTo(x+5, y+15-b+breath); ctx.lineTo(x-5, y+5-b+breath); ctx.lineTo(x+15, y+5-b+breath); ctx.fill();
+        // Right
+        ctx.beginPath(); ctx.moveTo(x+52, y+15-b+breath); ctx.lineTo(x+62, y+5-b+breath); ctx.lineTo(x+42, y+5-b+breath); ctx.fill();
+
+        // 8. ARMS (Gauntlets)
+        ctx.fillStyle = armorColor;
+        // Left Arm (Fist clenched)
+        ctx.fillRect(x-2, y+15-b+breath, 10, 15);
+        ctx.fillStyle = '#ffd700'; // Gold Gauntlet
+        ctx.fillRect(x-4, y+28-b+breath, 14, 8);
+        
+        // Right Arm (Raising to hold sword)
+        ctx.fillStyle = armorColor;
+        ctx.fillRect(x+48, y+15-b+breath, 10, 15);
+        ctx.fillStyle = '#ffd700'; // Gold Gauntlet
+        ctx.fillRect(x+46, y+25-b+breath, 14, 8);
+
+        // 9. HELMET (Dark Lord Style)
+        let headY = y - 2 - b + breath;
+        ctx.fillStyle = '#212121'; // Dark metal
+        ctx.fillRect(x+20, headY, 17, 16);
+        
+        // Crown Spikes
+        ctx.beginPath(); 
+        ctx.moveTo(x+20, headY); ctx.lineTo(x+18, headY-8); ctx.lineTo(x+24, headY); 
+        ctx.moveTo(x+37, headY); ctx.lineTo(x+39, headY-8); ctx.lineTo(x+33, headY);
+        ctx.fill();
+
+        // T-VISOR (Glowing Face)
+        ctx.fillStyle = '#ff1744'; // Red Light
+        ctx.shadowColor = '#f00'; ctx.shadowBlur = 10;
+        ctx.fillRect(x+22, headY+6, 13, 2); // Horizontal
+        ctx.fillRect(x+27.5, headY+6, 2, 6); // Vertical
+        ctx.shadowBlur = 0;
+    }
+
+
+
+
+
     else if(m.name.includes('Skeleton')) {
-        ctx.fillStyle = tint || '#ddd';
-        ctx.fillRect(x+20, y+0-b, 10, 10); ctx.fillRect(x+23, y+10-b, 4, 15); // y+10 -> y+0
-        ctx.fillRect(x+18, y+12-b, 14, 2); ctx.fillRect(x+18, y+16-b, 14, 2); ctx.fillRect(x+18, y+20-b, 14, 2);
-        ctx.fillRect(x+20, y+25-b, 3, 10); ctx.fillRect(x+27, y+25-b, 3, 10);
-        ctx.fillStyle='#111'; ctx.fillRect(x+22, y+2-b, 2, 2); ctx.fillRect(x+26, y+2-b, 2, 2);
+        // 1. Legs (Bone White)
+        ctx.fillStyle = tint || '#f5f5f5'; 
+        ctx.fillRect(x+18, y+25-b, 4, 12); // L Leg
+        ctx.fillRect(x+28, y+25-b, 4, 12); // R Leg
+        
+        // 2. Pelvis
+        ctx.fillRect(x+18, y+22-b, 14, 4);
+
+        // 3. Spine
+        ctx.fillRect(x+23, y+10-b, 4, 12);
+
+        // 4. Ribcage (Horizontal Lines)
+        ctx.strokeStyle = tint || '#f5f5f5';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x+16, y+12-b); ctx.lineTo(x+34, y+12-b); // Top Rib
+        ctx.moveTo(x+18, y+16-b); ctx.lineTo(x+32, y+16-b); // Mid Rib
+        ctx.moveTo(x+20, y+20-b); ctx.lineTo(x+30, y+20-b); // Bottom Rib
+        ctx.stroke();
+
+        // 5. Skull (Detailed)
+        ctx.fillStyle = tint || '#f5f5f5';
+        ctx.beginPath(); 
+        ctx.arc(x+25, y+2-b, 9, 0, Math.PI*2); // Cranium
+        ctx.fill();
+        ctx.fillRect(x+21, y+6-b, 8, 5); // Jaw area
+
+        // Eyes (Hollow)
+        ctx.fillStyle = '#212121';
+        ctx.beginPath(); ctx.arc(x+22, y+2-b, 2.5, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+28, y+2-b, 2.5, 0, 6.28); ctx.fill();
+        
+        // 6. Arms & Sword
+        ctx.fillStyle = '#f5f5f5';
+        // Left Arm (Holding Sword)
+        ctx.save();
+        ctx.translate(x+12, y+10-b);
+        ctx.rotate(-0.5); // Raise arm
+        ctx.fillRect(0, 0, 3, 12);
+        
+        // Sword
+        ctx.translate(0, 10);
+        ctx.rotate(1.5); // Point forward
+        ctx.fillStyle = '#90a4ae'; // Steel
+        ctx.fillRect(0, -15, 3, 20); // Blade
+        ctx.fillStyle = '#5d4037'; // Handle
+        ctx.fillRect(0, 5, 3, 5);
+        ctx.fillStyle = '#ffd700'; // Hilt
+        ctx.fillRect(-3, 3, 9, 2);
+        ctx.restore();
+
+        // Right Arm (Hanging)
+        ctx.fillStyle = '#f5f5f5';
+        ctx.fillRect(x+35, y+12-b, 3, 10);
     }
+
+
+
+
+
+
     else if(m.name==='Bat') {
-        ctx.fillStyle = tint || '#212121';
-        ctx.fillRect(x+5, y+5-b, 10, 10); ctx.fillRect(x+15, y+10-b, 5, 8); // y+15 -> y+5
-        ctx.fillRect(x+30, y+10-b, 5, 8); ctx.fillRect(x+35, y+5-b, 10, 10);
-        ctx.fillRect(x+20, y+10-b, 10, 12); ctx.fillRect(x+20, y+8-b, 2, 4); ctx.fillRect(x+28, y+8-b, 2, 4);
-        ctx.fillStyle='#f00'; ctx.fillRect(x+22, y+12-b, 2, 2); ctx.fillRect(x+26, y+12-b, 2, 2);
+        let flap = Math.sin(Date.now()/60) * 8; // Faster flap
+        let hover = Math.cos(Date.now()/150) * 3;
+
+        ctx.save();
+        ctx.translate(x+25, y+20-b+hover);
+
+        // 1. Wings (Webbed & Scalloped)
+        ctx.fillStyle = '#212121'; // Black Wings
+        ctx.beginPath();
+        // Left Wing
+        ctx.moveTo(-5, 0); 
+        ctx.quadraticCurveTo(-15, -15+flap, -25, -5+flap); // Top arch
+        ctx.quadraticCurveTo(-20, 5+flap, -15, 0+flap); // Scallop 1
+        ctx.quadraticCurveTo(-10, 5+flap, -5, 5);      // Scallop 2
+        
+        // Right Wing
+        ctx.moveTo(5, 0); 
+        ctx.quadraticCurveTo(15, -15+flap, 25, -5+flap); 
+        ctx.quadraticCurveTo(20, 5+flap, 15, 0+flap);
+        ctx.quadraticCurveTo(10, 5+flap, 5, 5);
+        ctx.fill();
+
+        // 2. Body (Furry Oval)
+        ctx.fillStyle = tint || '#424242'; // Dark Grey Body
+        ctx.beginPath(); ctx.ellipse(0, 0, 6, 8, 0, 0, 6.28); ctx.fill();
+
+        // 3. Ears (Large & Pointy)
+        ctx.fillStyle = '#424242';
+        ctx.beginPath(); 
+        ctx.moveTo(-4, -6); ctx.lineTo(-6, -12); ctx.lineTo(-2, -7); ctx.fill(); // Left
+        ctx.beginPath(); 
+        ctx.moveTo(4, -6); ctx.lineTo(6, -12); ctx.lineTo(2, -7); ctx.fill(); // Right
+
+        // 4. Face
+        ctx.fillStyle = '#ffff00'; // Glowing Yellow Eyes (Contrast)
+        ctx.shadowColor = '#ffff00'; ctx.shadowBlur = 5;
+        ctx.fillRect(-3, -2, 2, 2); 
+        ctx.fillRect(1, -2, 2, 2);
+        ctx.shadowBlur = 0;
+
+        // Fangs
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-2, 2, 1, 2); ctx.fillRect(1, 2, 1, 2);
+
+        ctx.restore();
     }
-    else if(m.name.includes('Basilisk')) {
-         ctx.fillStyle = tint || '#27ae60'; ctx.fillRect(x+35, y+10-b, 12, 10); // y+20 -> y+10
-         ctx.fillStyle = tint || '#1e8449'; ctx.fillRect(x+10, y+12-b, 25, 8);
-         ctx.fillRect(x, y+14-b, 10, 4);
-         ctx.fillStyle = '#f1c40f'; ctx.fillRect(x+15, y+8-b, 3, 4); ctx.fillRect(x+25, y+8-b, 3, 4);
-         drawEyes(x+40, y+12-b);
+
+
+
+
+
+
+  else if(m.name.includes('Basilisk')) {
+         // DIRECTION FIX: 
+         // If mob is Left of player (m.x < p.x), face Right (1). 
+         // If mob is Right of player, face Left (-1).
+         let faceDir = (m.x < S.p.x) ? 1 : -1; 
+         
+         ctx.save();
+         ctx.translate(x+25, y+25); 
+         ctx.scale(faceDir, 1); 
+
+         // --- DRAWING RELATIVE TO (0,0) ---
+         let sway = Math.sin(Date.now()/250) * 2;
+
+         // 1. Body (Coiled Lizard)
+         ctx.fillStyle = tint || '#2e7d32'; // Deep Green
+         ctx.beginPath();
+         // Tail (Left side of local axis)
+         ctx.moveTo(-20, 10);
+         ctx.quadraticCurveTo(-10, 15, 0, 5); // Hip
+         // Neck S-Curve
+         ctx.bezierCurveTo(10, 0, 5, -10, 15+sway, -15); // Head position
+         // Neck Thickness
+         ctx.lineTo(20+sway, -10); 
+         ctx.bezierCurveTo(10, -5, 15, 5, 0, 15); // Belly
+         ctx.lineTo(-20, 10);
+         ctx.fill();
+
+         // 2. Underbelly (Stripes)
+         ctx.strokeStyle = '#cddc39'; ctx.lineWidth = 1;
+         ctx.beginPath();
+         ctx.moveTo(0, 5); ctx.lineTo(0, 15);
+         ctx.moveTo(5, 0); ctx.lineTo(8, 8);
+         ctx.moveTo(10, -5); ctx.lineTo(12, 0);
+         ctx.stroke();
+
+         // 3. Head & Crest
+         ctx.save();
+         ctx.translate(18+sway, -12); // Move to Head
+         
+         // Head
+         ctx.fillStyle = '#1b5e20'; 
+         ctx.beginPath(); ctx.ellipse(0, 0, 8, 5, 0.2, 0, 6.28); ctx.fill();
+         
+         // Crest (Spikes)
+         ctx.fillStyle = '#f9a825'; 
+         ctx.beginPath();
+         ctx.moveTo(-4, -4); ctx.lineTo(-6, -10); ctx.lineTo(-2, -5); 
+         ctx.lineTo(2, -12); ctx.lineTo(4, -4); 
+         ctx.fill();
+         
+         // Eye
+         ctx.fillStyle = '#ffea00'; 
+         ctx.beginPath(); ctx.arc(2, -1, 2.5, 0, 6.28); ctx.fill();
+         ctx.fillStyle = '#000'; ctx.fillRect(1.5, -2.5, 1, 3); // Slit
+         ctx.restore();
+
+         // 4. Legs (Crawling)
+         let walk = Math.sin(Date.now()/100) * 3;
+         ctx.strokeStyle = '#1b5e20'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+         // Front Leg
+         ctx.beginPath(); ctx.moveTo(5, 5); ctx.lineTo(10+walk, 15); ctx.stroke();
+         // Back Leg
+         ctx.beginPath(); ctx.moveTo(-10, 5); ctx.lineTo(-15-walk, 15); ctx.stroke();
+
+         ctx.restore();
     }
+
+
+
+
+
+
+
+
     else if(m.name==='Mosquito') {
-         ctx.fillStyle = tint || '#555'; ctx.fillRect(x+22, y+10-b, 6, 15); // y+20 -> y+10
-         ctx.fillStyle = 'rgba(200,200,200,0.6)'; ctx.fillRect(x+10, y+5-b, 12, 10); ctx.fillRect(x+28, y+5-b, 12, 10);
-         ctx.fillStyle = '#f00'; ctx.fillRect(x+24, y+25-b, 2, 8);
-         ctx.fillStyle = '#a93226'; ctx.fillRect(x+20, y+8-b, 4, 4); ctx.fillRect(x+26, y+8-b, 4, 4);
+        let fly = Math.sin(Date.now()/30) * 5; // Very fast vibration
+        
+        ctx.save();
+        ctx.translate(x+25, y+20-b); 
+
+        // 1. WINGS (Angle them back like a dart)
+        ctx.fillStyle = 'rgba(200, 240, 255, 0.5)';
+        ctx.beginPath();
+        // Right Wing (Angled Up)
+        ctx.ellipse(5, -10+fly, 4, 12, 0.5, 0, 6.28); 
+        // Left Wing (Angled Up)
+        ctx.ellipse(-5, -10-fly, 4, 12, -0.5, 0, 6.28); 
+        ctx.fill();
+
+        // 2. LEGS (Long & Dangly)
+        ctx.strokeStyle = '#212121'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        // Front
+        ctx.moveTo(2, 0); ctx.lineTo(8, 8); ctx.lineTo(6, 15);
+        ctx.moveTo(-2, 0); ctx.lineTo(-8, 8); ctx.lineTo(-6, 15);
+        // Back
+        ctx.moveTo(2, 2); ctx.lineTo(5, 12+fly);
+        ctx.moveTo(-2, 2); ctx.lineTo(-5, 12+fly);
+        ctx.stroke();
+
+        // 3. BODY (Needle Shape)
+        // Abdomen (Red blood sack)
+        ctx.fillStyle = tint || '#8d6e63';
+        ctx.beginPath(); ctx.ellipse(0, 5, 4, 7, 0, 0, 6.28); ctx.fill();
+        // Thorax (Black)
+        ctx.fillStyle = '#212121';
+        ctx.beginPath(); ctx.arc(0, -2, 4, 0, 6.28); ctx.fill();
+
+        // 4. EYES (Huge Red Bug Eyes)
+        ctx.fillStyle = '#d50000'; 
+        ctx.beginPath(); ctx.arc(-2, -4, 2.5, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(2, -4, 2.5, 0, 6.28); ctx.fill();
+
+        // 5. PROBOSCIS (The Needle)
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(0, -2); ctx.lineTo(0, 8); ctx.stroke();
+
+        ctx.restore();
     }
+
+
+
+
+
+
+
+
     else if(m.name.includes('Magma')) {
-        ctx.fillStyle = tint || '#bf360c'; ctx.fillRect(x+15, y+5-b, 20, 25); // y+15 -> y+5
-        ctx.fillRect(x+10, y+10-b, 5, 15); ctx.fillRect(x+35, y+10-b, 5, 15);
-        ctx.fillStyle = '#ff6f00'; ctx.fillRect(x+20, y+10-b, 10, 5); ctx.fillRect(x+22, y+20-b, 6, 5);
-        ctx.fillStyle = '#ffd600'; ctx.fillRect(x+18, y+2-b, 4, 4); ctx.fillRect(x+28, y+2-b, 4, 4);
+        let flow = Math.sin(Date.now()/200) * 2;
+        let sx = x+25, sy = y+25-b;
+
+        // 1. Base Puddle (Spreading)
+        ctx.fillStyle = 'rgba(191, 54, 12, 0.6)';
+        ctx.beginPath(); ctx.ellipse(sx, sy+15, 18, 6, 0, 0, 6.28); ctx.fill();
+
+        // 2. Rising Column (The Body)
+        // Gradient: Hot at bottom, cooling at top
+        let grad = ctx.createLinearGradient(sx, sy+15, sx, sy-15);
+        grad.addColorStop(0, '#ffeb3b');   // Yellow Base (Heat source)
+        grad.addColorStop(0.5, '#ff5722'); // Orange Mid
+        grad.addColorStop(1, '#5d4037');   // Brown Top
+        
+        ctx.fillStyle = tint || grad;
+        ctx.beginPath();
+        // Gooey Shape
+        ctx.moveTo(sx - 15, sy + 10);
+        ctx.quadraticCurveTo(sx - 20 - flow, sy, sx - 10, sy - 15); // Left side
+        ctx.quadraticCurveTo(sx, sy - 25 + flow, sx + 10, sy - 15); // Top Head
+        ctx.quadraticCurveTo(sx + 20 + flow, sy, sx + 15, sy + 10); // Right side
+        ctx.fill();
+
+        // 3. Hardened Crust (Floating Armor)
+        ctx.fillStyle = '#3e2723'; // Dark Rock
+        // Left Shoulder
+        ctx.beginPath(); ctx.arc(sx-12, sy-5+flow, 4, 0, 6.28); ctx.fill();
+        // Right Shoulder
+        ctx.beginPath(); ctx.arc(sx+12, sy-2-flow, 5, 0, 6.28); ctx.fill();
+        // Face Mask (Broken)
+        ctx.beginPath(); 
+        ctx.moveTo(sx-8, sy-10); ctx.lineTo(sx+8, sy-10); 
+        ctx.lineTo(sx+5, sy); ctx.lineTo(sx-5, sy); 
+        ctx.fill();
+
+        // 4. Eyes (Burning from inside the mask)
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#ff3d00'; ctx.shadowBlur = 10;
+        ctx.fillRect(sx-4, sy-8, 2, 2);
+        ctx.fillRect(sx+2, sy-8, 2, 2);
+        ctx.shadowBlur = 0;
+
+        // 5. Dripping Lava Particles
+        if (Math.random() < 0.1) {
+             part(sx + (Math.random()-0.5)*20, sy, '#ffeb3b', 1, 3);
+        }
     }
+
+
+
+
+
+
     else if(m.name==='Fire Imp') {
-        ctx.fillStyle = tint || '#d32f2f'; ctx.fillRect(x+20, y+15-b, 10, 15); ctx.fillRect(x+18, y+5-b, 14, 10); // y+25 -> y+15
-        ctx.fillStyle = '#212121'; ctx.fillRect(x+18, y+0-b, 3, 5); ctx.fillRect(x+29, y+0-b, 3, 5);
-        ctx.fillStyle = '#ffd700'; ctx.fillRect(x+35, y+5-b, 2, 25); ctx.fillRect(x+33, y+5-b, 6, 2);
-        drawEyes(x+20, y+8-b); drawEyes(x+26, y+8-b);
+        let dance = Math.sin(Date.now()/100) * 3;
+        
+        // 1. Body (Charred Wood / Coal)
+        ctx.fillStyle = tint || '#212121'; 
+        ctx.beginPath();
+        ctx.moveTo(x+25, y+30-b); 
+        ctx.lineTo(x+15, y+15-b); // Hip L
+        ctx.lineTo(x+35, y+15-b); // Hip R
+        ctx.fill();
+        
+        // Chest
+        ctx.fillRect(x+18, y+5-b, 14, 12);
+
+        // 2. Head (Flame Shape)
+        // Core Head
+        ctx.fillStyle = '#212121';
+        ctx.fillRect(x+20, y-2-b, 10, 10);
+        
+        // Hair (Living Fire)
+        ctx.fillStyle = '#ff5722';
+        ctx.beginPath();
+        ctx.moveTo(x+20, y-2-b);
+        ctx.lineTo(x+15-dance, y-10-b); // Flame L
+        ctx.lineTo(x+25, y-5-b);
+        ctx.lineTo(x+35+dance, y-10-b); // Flame R
+        ctx.lineTo(x+30, y-2-b);
+        ctx.fill();
+
+        // 3. Face
+        ctx.fillStyle = '#ffd700'; // Yellow Eyes
+        ctx.fillRect(x+21, y+1-b, 2, 2); ctx.fillRect(x+27, y+1-b, 2, 2);
+        
+        // Grin
+        ctx.fillStyle = '#d50000';
+        ctx.beginPath(); ctx.arc(x+25, y+5-b, 3, 0, Math.PI); ctx.fill();
+
+        // 4. Limbs (Stick-like but hot)
+        ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 2;
+        // Arms holding fire
+        ctx.beginPath(); ctx.moveTo(x+18, y+8-b); ctx.lineTo(x+10, y+5-b+dance); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x+32, y+8-b); ctx.lineTo(x+40, y+5-b-dance); ctx.stroke();
+        
+        // Fire in hands
+        ctx.fillStyle = '#ffeb3b';
+        ctx.beginPath(); ctx.arc(x+10, y+5-b+dance, 3, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(x+40, y+5-b-dance, 3, 0, 6.28); ctx.fill();
     }
-    else if(m.name.includes('Slime')) {
-        let wobble = Math.sin(Date.now()/100)*2;
-        ctx.fillStyle= tint || '#00bcd4'; 
-        ctx.fillRect(x+15-wobble, y+15-wobble, 20+wobble*2, 15+wobble); // y+30 -> y+15
-        drawEyes(x+18, y+17); drawEyes(x+28, y+17);
+
+
+
+
+
+
+   else if(m.name.includes('Slime')) {
+        let wobble = Math.sin(Date.now()/150)*2;
+        let sx = x+25, sy = y+25-b;
+        
+        // 1. Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.beginPath(); ctx.ellipse(sx, sy+12, 16, 5, 0, 0, 6.28); ctx.fill();
+
+        // 2. LIQUID BODY (Gradient instead of flat color)
+        // This makes it look round and 3D without a weird core
+        let mainC = tint || '#00bcd4'; // Cyan
+        let lightC = tint ? '#fff' : '#80deea'; // Lighter Cyan
+        
+        let grad = ctx.createRadialGradient(sx-5, sy-10, 2, sx, sy, 22);
+        grad.addColorStop(0, lightC);   // Highlight spot
+        grad.addColorStop(0.3, mainC);  // Main body
+        grad.addColorStop(1, 'rgba(0, 151, 167, 0.8)'); // Darker edges
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        // Soft "Bun" shape
+        ctx.moveTo(sx - 20 - wobble, sy + 10); 
+        ctx.bezierCurveTo(sx - 20, sy - 20, sx - 10, sy - 30 + wobble, sx, sy - 30 + wobble); 
+        ctx.bezierCurveTo(sx + 10, sy - 30 + wobble, sx + 20, sy - 20, sx + 20 + wobble, sy + 10);
+        ctx.lineTo(sx - 20 - wobble, sy + 10);
+        ctx.fill();
+
+        // 3. INTERNAL BUBBLES (Subtle texture)
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        let bubY = Math.sin(Date.now()/200)*3;
+        ctx.beginPath(); ctx.arc(sx-10, sy+5-bubY, 3, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx+12, sy-5+bubY, 2, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(sx+5, sy+8-bubY, 1.5, 0, 6.28); ctx.fill();
+
+        // 4. FACE (Cute but simple)
+        ctx.fillStyle = '#006064'; // Dark Teal Eyes
+        ctx.beginPath(); ctx.arc(sx-7, sy-2, 2.5, 0, 6.28); ctx.fill(); 
+        ctx.beginPath(); ctx.arc(sx+7, sy-2, 2.5, 0, 6.28); ctx.fill();
+        
+        // 5. Glossy Reflection (Wet look)
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.beginPath(); ctx.ellipse(sx+8, sy-18+wobble, 3, 6, 0.5, 0, 6.28); ctx.fill();
     }
+
+
+
+
+
+
+
+
     else if(m.name==='Goblin') {
-        ctx.fillStyle= tint || '#c0392b'; 
-        ctx.fillRect(x+15, y+15-b, 20, 20); ctx.fillRect(x+10, y+10-b, 30, 10); // y+25 -> y+15
-        ctx.fillStyle= tint || '#a93226'; ctx.beginPath(); ctx.moveTo(x+10,y+15-b); ctx.lineTo(x+5,y+5-b); ctx.lineTo(x+15,y+10-b); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(x+40,y+15-b); ctx.lineTo(x+45,y+5-b); ctx.lineTo(x+35,y+10-b); ctx.fill();
-        drawEyes(x+18, y+18-b); drawEyes(x+28, y+18-b);
+        // Body (Hunched)
+        ctx.fillStyle = tint || '#558b2f'; // Dark Green
+        ctx.beginPath(); ctx.ellipse(x+25, y+20-b, 12, 10, 0, 0, 6.28); ctx.fill();
+        
+        // Loincloth (Brown Rags)
+        ctx.fillStyle = '#5d4037';
+        ctx.beginPath(); ctx.moveTo(x+18, y+25-b); ctx.lineTo(x+32, y+25-b); ctx.lineTo(x+25, y+35-b); ctx.fill();
+
+        // Head (Big Ears)
+        ctx.fillStyle = tint || '#7cb342'; // Light Green
+        ctx.beginPath(); ctx.arc(x+25, y+10-b, 10, 0, 6.28); ctx.fill();
+        // Ears
+        ctx.beginPath(); ctx.moveTo(x+15, y+10-b); ctx.lineTo(x+5, y+5-b); ctx.lineTo(x+16, y+5-b); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x+35, y+10-b); ctx.lineTo(x+45, y+5-b); ctx.lineTo(x+34, y+5-b); ctx.fill();
+
+        // Face
+        drawEyes(x+21, y+8-b); drawEyes(x+26, y+8-b);
+        ctx.fillStyle = '#1b5e20'; // Mouth
+        ctx.fillRect(x+22, y+14-b, 6, 2);
+        
+        // Dagger (Weapon)
+        ctx.fillStyle = '#bdc3c7'; ctx.strokeStyle = '#2c3e50';
+        ctx.beginPath(); ctx.moveTo(x+35, y+20-b); ctx.lineTo(x+45, y+15-b); ctx.lineTo(x+38, y+22-b); ctx.fill(); ctx.stroke();
     }
+
+
+
+
+
+
+
+
 
 
 
@@ -7383,10 +8137,91 @@ function drawMob(x, y, m) {
 
 
 
-    else if(m.name.includes('Yeti') || m.name==='Ice Spirit') {
-        if(m.name==='Ice Spirit') { ctx.fillStyle= tint || '#0288d1'; ctx.beginPath(); ctx.moveTo(x+25, y+0-b); ctx.lineTo(x+35, y+15-b); ctx.lineTo(x+25, y+30-b); ctx.lineTo(x+15, y+15-b); ctx.fill(); } // y+10 -> y+0
-        else { ctx.fillStyle= tint || '#2196f3'; ctx.beginPath(); ctx.ellipse(x+25, y+15-b, 20, 22, 0, 0, 6.28); ctx.fill(); drawEyes(x+20, y+5-b); drawEyes(x+27, y+5-b); } // y+25 -> y+15
+   else if(m.name.includes('Yeti') || m.name==='Ice Spirit') {
+        
+        // === ICE SPIRIT (Floating Crystal) ===
+        if(m.name==='Ice Spirit') {
+            let t = Date.now()/200;
+            // Glow
+            ctx.fillStyle = 'rgba(0, 229, 255, 0.3)';
+            ctx.beginPath(); ctx.arc(x+25, y+15-b, 22, 0, 6.28); ctx.fill();
+            
+            // Core Crystal
+            ctx.fillStyle = tint || '#e0f7fa'; 
+            ctx.strokeStyle = '#00bcd4'; ctx.lineWidth = 2;
+            ctx.save(); ctx.translate(x+25, y+15-b); ctx.rotate(Math.sin(t)*0.2); 
+            ctx.beginPath();
+            ctx.moveTo(0, -15); ctx.lineTo(10, 0); ctx.lineTo(0, 20); ctx.lineTo(-10, 0); ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+
+            // Shards
+            for(let i=0; i<3; i++) {
+                let ang = t + (i * 2.09); 
+                let rx = (x+25) + Math.cos(ang) * 20;
+                let ry = (y+15-b) + Math.sin(ang) * 10; 
+                ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.moveTo(rx, ry-6); ctx.lineTo(rx+5, ry); ctx.lineTo(rx, ry+6); ctx.lineTo(rx-5, ry); ctx.fill();
+            }
+        }
+        
+        // === YETI (Gorilla Beast) ===
+        else { 
+            let sway = Math.sin(Date.now()/300) * 2;
+            
+            // 1. Body Fur (Blue-Grey to pop on snow)
+            ctx.fillStyle = tint || '#546e7a'; 
+            ctx.beginPath();
+            // Round Shoulders
+            ctx.arc(x+15, y+15-b, 12, Math.PI, Math.PI*2); // L
+            ctx.arc(x+35, y+15-b, 12, Math.PI, Math.PI*2); // R
+            // Tapered Waist
+            ctx.lineTo(x+35, y+42-b); 
+            ctx.lineTo(x+15, y+42-b);
+            ctx.fill();
+
+            // 2. Arms (Knuckle Dragging)
+            ctx.beginPath(); ctx.ellipse(x+5+sway, y+28-b, 8, 15, 0.2, 0, 6.28); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(x+45-sway, y+28-b, 8, 15, -0.2, 0, 6.28); ctx.fill();
+            // Fists
+            ctx.fillStyle = '#37474f';
+            ctx.beginPath(); ctx.arc(x+5+sway, y+40-b, 6, 0, 6.28); ctx.fill();
+            ctx.beginPath(); ctx.arc(x+45-sway, y+40-b, 6, 0, 6.28); ctx.fill();
+
+            // 3. FACE (ROUNDED & DISTINCT)
+            // Skin
+            ctx.fillStyle = '#81d4fa'; // Ice Blue Skin
+            ctx.beginPath();
+            // Rounded Jawline
+            ctx.moveTo(x+15, y+15-b);
+            ctx.bezierCurveTo(x+15, y+30-b, x+35, y+30-b, x+35, y+15-b);
+            ctx.bezierCurveTo(x+35, y+8-b, x+15, y+8-b, x+15, y+15-b);
+            ctx.fill();
+
+            // Fur Brow (Overhang)
+            ctx.fillStyle = '#cfd8dc'; 
+            ctx.beginPath(); 
+            ctx.moveTo(x+12, y+12-b); 
+            ctx.quadraticCurveTo(x+25, y+18-b, x+38, y+12-b); // V-shape brow
+            ctx.lineTo(x+38, y+8-b);
+            ctx.quadraticCurveTo(x+25, y+5-b, x+12, y+8-b);
+            ctx.fill();
+
+            // Glowing Eyes
+            ctx.fillStyle = '#d50000';
+            ctx.beginPath(); ctx.arc(x+20, y+18-b, 2, 0, 6.28); ctx.fill();
+            ctx.beginPath(); ctx.arc(x+30, y+18-b, 2, 0, 6.28); ctx.fill();
+
+            // Fangs
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); ctx.moveTo(x+20, y+22-b); ctx.lineTo(x+22, y+26-b); ctx.lineTo(x+24, y+22-b); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(x+26, y+22-b); ctx.lineTo(x+28, y+26-b); ctx.lineTo(x+30, y+22-b); ctx.fill();
+        }
     }
+
+
+
+
 
     if(m.boss) { 
         ctx.fillStyle='#ffd700'; ctx.font='20px sans'; 
@@ -7641,6 +8476,1054 @@ if(n.name === "Shummi") {
 
 
 
+
+
+
+
+
+
+
+// --- SIMON (The Chunky Chef) ---
+    else if(n.name === "Simon") {
+        // 1. LEGS (Checkered Chef Pants)
+        ctx.fillStyle = '#263238'; // Dark Grey Base
+        ctx.fillRect(-4.5, 6, 4, 8); // Left Leg (Wider)
+        ctx.fillRect(0.5, 6, 4, 8);  // Right Leg (Wider)
+        
+        // Checkered Pattern (Simple dots)
+        ctx.fillStyle = '#cfd8dc'; 
+        ctx.fillRect(-3.5, 7, 1, 1); ctx.fillRect(-3.5, 9, 1, 1); ctx.fillRect(-3.5, 11, 1, 1);
+        ctx.fillRect(1.5, 7, 1, 1);  ctx.fillRect(1.5, 9, 1, 1);  ctx.fillRect(1.5, 11, 1, 1);
+
+        // 2. BODY (Double-Breasted Jacket)
+        ctx.fillStyle = '#ffffff'; 
+        // Wide Torso
+        ctx.beginPath();
+        ctx.moveTo(-6, -2); ctx.lineTo(6, -2); // Shoulders
+        ctx.lineTo(7, 8);   ctx.lineTo(-7, 8); // Hips (Chunky)
+        ctx.fill();
+
+        // Buttons (Double row)
+        ctx.fillStyle = '#bdbdbd';
+        ctx.fillRect(-2, 0, 1, 1); ctx.fillRect(1, 0, 1, 1);
+        ctx.fillRect(-2, 3, 1, 1); ctx.fillRect(1, 3, 1, 1);
+
+        // Red Neckerchief
+        ctx.fillStyle = '#c62828';
+        ctx.beginPath(); ctx.moveTo(-3, -2); ctx.lineTo(0, 1); ctx.lineTo(3, -2); ctx.fill();
+
+        // 3. ARMS (Holding a Pan?)
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(-8, -1, 3, 6); // Left Arm
+        ctx.fillRect(5, -1, 3, 6);  // Right Arm
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-8, 5, 3, 2);  ctx.fillRect(5, 5, 3, 2);
+
+        // 4. HEAD (Round Face)
+        ctx.fillStyle = skinColor; 
+        ctx.beginPath(); ctx.arc(0, -5, 4.5, 0, 6.28); ctx.fill(); // Rounder head
+        
+        // Facial Hair (Goatee)
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-1, -2, 2, 1);
+
+        // 5. CHEF HAT (Toque)
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1;
+        // Puffy Top
+        ctx.beginPath(); 
+        ctx.moveTo(-5, -9); 
+        ctx.bezierCurveTo(-7, -14, -3, -15, 0, -14); // Left puff
+        ctx.bezierCurveTo(3, -15, 7, -14, 5, -9);    // Right puff
+        ctx.fill(); ctx.stroke();
+        // Band
+        ctx.fillRect(-4, -9, 8, 3);
+    }
+
+    // --- STEVE (The Elder Chef) ---
+    else if(n.name === "Steve") {
+        // 1. LEGS (Black Slacks)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-3, 6, 2.5, 8); ctx.fillRect(0.5, 6, 2.5, 8);
+
+        // 2. BODY (Apron Style)
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(-4, -2, 8, 9); // White Shirt
+        
+        // Navy Blue Apron
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-3, 1, 6, 7); // Bib
+        ctx.fillRect(-3.5, 4, 7, 6); // Lower Apron
+
+        // Apron Strings
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-4, 4, 1, 1); ctx.fillRect(3, 4, 1, 1);
+
+        // 3. ARMS
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(-6, -1, 2, 5); ctx.fillRect(4, -1, 2, 5);
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6, 4, 2, 2); ctx.fillRect(4, 4, 2, 2);
+
+        // 4. HEAD (Aged)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Grey Hair
+        ctx.fillStyle = '#90a4ae'; 
+        ctx.fillRect(-4, -8, 8, 2); // Top
+        ctx.fillRect(-4, -6, 1, 3); // Sides
+        ctx.fillRect(3, -6, 1, 3);
+
+        // Mustache (White/Grey)
+        ctx.fillStyle = '#cfd8dc'; 
+        ctx.fillRect(-2, -3, 4, 1.5); 
+
+        // 5. SMALL HAT (Flat Cap)
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.ellipse(0, -9, 5, 2, 0, 0, 6.28); ctx.fill();
+    }
+
+    // --- NICOLAS (The Pilot) ---
+    else if(n.name === "Nicolas") {
+        // 1. LEGS (Navy Uniform)
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-3.5, 6, 3, 8); 
+        ctx.fillRect(0.5, 6, 3, 8);
+        
+        // Shoes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-4, 13, 3.5, 1); ctx.fillRect(0.5, 13, 3.5, 1);
+
+        // 2. BODY (Pilot Jacket)
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-5, -2, 10, 9); // Jacket
+        
+        // Gold Buttons (Double Breasted)
+        ctx.fillStyle = '#ffd700'; 
+        ctx.fillRect(-2, 1, 1, 1); ctx.fillRect(1, 1, 1, 1);
+        ctx.fillRect(-2, 4, 1, 1); ctx.fillRect(1, 4, 1, 1);
+
+        // White Shirt & Tie
+        ctx.fillStyle = '#fff'; 
+        ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(0, 2); ctx.lineTo(2, -2); ctx.fill();
+        ctx.fillStyle = '#000'; // Black Tie
+        ctx.fillRect(-0.5, -1, 1, 3);
+
+        // Epaulets (Shoulder Rank)
+        ctx.fillStyle = '#ffd700'; 
+        ctx.fillRect(-6, -2, 2, 1); ctx.fillRect(4, -2, 2, 1);
+
+        // 3. ARMS
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-7, -1, 2, 6); ctx.fillRect(5, -1, 2, 6);
+        // Gold Stripes on cuffs
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-7, 3, 2, 1); ctx.fillRect(5, 3, 2, 1);
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 5, 2, 2); ctx.fillRect(5, 5, 2, 2);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 5. AVIATOR SUNGLASSES
+        ctx.fillStyle = '#111'; 
+        ctx.beginPath();
+        ctx.moveTo(-3, -5); ctx.lineTo(-1, -5); ctx.lineTo(-1.5, -3); ctx.lineTo(-3, -3); // Left Lens
+        ctx.moveTo(1, -5);  ctx.lineTo(3, -5);  ctx.lineTo(3, -3);    ctx.lineTo(1.5, -3);  // Right Lens
+        ctx.fill();
+        // Bridge
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(-1, -4.5); ctx.lineTo(1, -4.5); ctx.stroke();
+
+        // 6. PILOT HAT
+        // Visor
+        ctx.fillStyle = '#000'; 
+        ctx.beginPath(); ctx.ellipse(0, -7, 5, 1.5, 0, 0, 6.28); ctx.fill();
+        // Cap Top
+        ctx.fillStyle = '#fff'; // White Top Cap
+        ctx.beginPath(); 
+        ctx.moveTo(-5, -8); ctx.lineTo(5, -8); 
+        ctx.quadraticCurveTo(6, -12, 0, -12); 
+        ctx.quadraticCurveTo(-6, -12, -5, -8); 
+        ctx.fill();
+        // Badge
+        ctx.fillStyle = '#ffd700'; ctx.fillRect(-1, -11, 2, 2);
+    }
+
+
+
+
+
+
+// --- ELDER MAN (The Wise Sage) ---
+    else if(n.name === "Elder Man") {
+        // 1. ROBES (Long & Flowing)
+        ctx.fillStyle = '#37474f'; // Dark Grey Robe
+        ctx.beginPath();
+        ctx.moveTo(-5, -2); 
+        ctx.lineTo(5, -2);
+        ctx.lineTo(7, 13); // Flared bottom
+        ctx.lineTo(-7, 13);
+        ctx.fill();
+
+        // Robe Trim (Lighter)
+        ctx.fillStyle = '#78909c'; 
+        ctx.fillRect(-2, -2, 4, 15); // Center strip
+
+        // 2. HEAD (Bald & Bearded)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Long White Beard
+        ctx.fillStyle = '#eeeeee'; 
+        ctx.beginPath(); 
+        ctx.moveTo(-3, -3); 
+        ctx.lineTo(3, -3); 
+        ctx.lineTo(0, 6); // Pointy beard covering chest
+        ctx.fill();
+
+        // Eyebrows (Bushy)
+        ctx.fillRect(-3, -6, 2, 1); ctx.fillRect(1, -6, 2, 1);
+
+        // 3. STAFF (Wooden, Magical)
+        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(7, 13); ctx.lineTo(7, -8); ctx.stroke(); // Staff pole
+        
+        // Orb on Staff
+        ctx.fillStyle = '#00bcd4'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 5;
+        ctx.beginPath(); ctx.arc(7, -10, 2, 0, 6.28); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // 4. ARMS (Sleeves)
+        ctx.fillStyle = '#37474f'; 
+        ctx.fillRect(-7, 0, 2, 6); // Left
+        ctx.fillRect(5, 0, 2, 6);  // Right
+    }
+
+
+
+
+
+
+
+    // --- DAVID (Gym Buddy - German/Taiwanese Mix) ---
+    else if(n.name === "David") {
+        // 1. LEGS (Dark Straight Trousers - Practical)
+        ctx.fillStyle = '#263238'; // Dark Slate/Black Pants
+        ctx.fillRect(-4, 6, 3.5, 9); // Left (Slightly wide stance)
+        ctx.fillRect(0.5, 6, 3.5, 9);  // Right
+        
+        // Sturdy Leather Shoes
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-4, 15, 3.5, 1); ctx.fillRect(0.5, 15, 3.5, 1);
+
+        // 2. BODY (Fitted Grey T-Shirt)
+        ctx.fillStyle = '#78909c'; // Cool Grey Basic Tee
+        ctx.fillRect(-5.5, -2, 11, 9); // Broad chest (Gym physique)
+        
+        // Simple Neckline
+        ctx.fillStyle = '#b0bec5'; 
+        ctx.fillRect(-2, -2, 4, 1);
+
+        // 3. ARMS (Short Sleeves showing muscle)
+        ctx.fillStyle = '#78909c'; 
+        ctx.fillRect(-7.5, -1, 2, 4); // Sleeves
+        ctx.fillRect(5.5, -1, 2, 4);
+        
+        // Skin Arms (Thick to show he lifts)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7.5, 3, 2, 4); 
+        ctx.fillRect(5.5, 3, 2, 4);
+
+        // 4. HEAD (Neat & Clean)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Dark Brown - Mixed Heritage)
+        ctx.fillStyle = '#4e342e'; // Deep Brown
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-4, -6, 1, 2); // Tapered sides
+        ctx.fillRect(3, -6, 1, 2);
+
+        // Rectangular Glasses (The intellectual/efficient look)
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-2.5, -5, 2, 1.5); 
+        ctx.strokeRect(0.5, -5, 2, 1.5);
+        ctx.beginPath(); ctx.moveTo(-0.5, -4.5); ctx.lineTo(0.5, -4.5); ctx.stroke();
+    }
+
+    // --- GRACE (Rich Woman) ---
+    else if(n.name === "Grace") {
+        // 1. DRESS (Elegant Gown)
+        let dressGrad = ctx.createLinearGradient(0, -2, 0, 15);
+        dressGrad.addColorStop(0, '#8e24aa'); // Purple
+        dressGrad.addColorStop(1, '#4a148c'); // Dark Purple
+        
+        ctx.fillStyle = dressGrad;
+        ctx.beginPath();
+        ctx.moveTo(-5, -2); ctx.lineTo(5, -2); // Shoulders
+        ctx.lineTo(8, 14); ctx.lineTo(-8, 14); // Skirt flare
+        ctx.fill();
+
+        // 2. FUR STOLE (White Boa)
+        ctx.fillStyle = '#fff'; ctx.shadowColor='#eee'; ctx.shadowBlur=3;
+        ctx.beginPath(); 
+        ctx.arc(-4, 0, 3, 0, 6.28); ctx.arc(0, 1, 3, 0, 6.28); ctx.arc(4, 0, 3, 0, 6.28);
+        ctx.fill(); ctx.shadowBlur=0;
+
+        // 3. HEAD & HAIR (Fancy Updo)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair bun
+        ctx.fillStyle = '#fdd835'; // Blonde
+        ctx.beginPath(); ctx.arc(0, -9, 5, 0, 6.28); ctx.fill(); // Big Bun
+        ctx.fillRect(-4, -8, 8, 3); // Bangs
+
+        // 4. JEWELRY
+        // Pearl Necklace
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-2, -1, 1, 1); ctx.fillRect(0, 0, 1, 1); ctx.fillRect(2, -1, 1, 1);
+        
+        // Earrings
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-4, -5, 1, 2); ctx.fillRect(3, -5, 1, 2);
+
+        // Handbag
+        ctx.fillStyle = '#c62828'; ctx.fillRect(5, 5, 3, 4); // Bag
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth=1; 
+        ctx.beginPath(); ctx.moveTo(6, 5); ctx.lineTo(6, 3); ctx.lineTo(7, 3); ctx.lineTo(7, 5); ctx.stroke();
+    }
+
+
+
+
+
+// --- JACK (Chic Smart Casual - Blazer, No Glasses, Grey Beanie) ---
+    else if(n.name === "Jack") {
+        // 1. LEGS (Dark Denim - Rolled Up)
+        ctx.fillStyle = '#283593'; // Indigo Jeans
+        ctx.fillRect(-3.5, 6, 3, 8); // Left
+        ctx.fillRect(0.5, 6, 3, 8);  // Right
+        
+        // Selvedge Cuff (Rolled up)
+        ctx.fillStyle = '#e0e0e0'; 
+        ctx.fillRect(-3.5, 13, 3, 1.5); ctx.fillRect(0.5, 13, 3, 1.5);
+
+        // Loafers (Leather, no socks visible)
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-3.5, 14.5, 3, 1); ctx.fillRect(0.5, 14.5, 3, 1);
+
+        // 2. BODY (Unstructured Brown Blazer over Tee)
+        ctx.fillStyle = '#5d4037'; // Brown Blazer
+        ctx.fillRect(-5, -2, 10, 10);
+        
+        // Inner White T-Shirt (Visible center)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-1.5, -2, 3, 9); 
+
+        // Blazer Lapels
+        ctx.fillStyle = '#4e342e'; // Darker brown shadow
+        ctx.beginPath(); ctx.moveTo(-1.5, -2); ctx.lineTo(-1.5, 6); ctx.lineTo(-4, -2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(1.5, -2);  ctx.lineTo(1.5, 6);  ctx.lineTo(4, -2);  ctx.fill();
+
+        // 3. ARMS (Blazer Sleeves)
+        ctx.fillStyle = '#5d4037'; 
+        ctx.fillRect(-7, -1, 2, 7); 
+        ctx.fillRect(5, -1, 2, 7);
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 6, 2, 2); ctx.fillRect(5, 6, 2, 2);
+
+        // 4. HEAD (Grey Beanie, No Glasses)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Stylish Fisherman Beanie (Heather Grey)
+        ctx.fillStyle = '#b0bec5'; // Light Blue-Grey
+        // Dome
+        ctx.beginPath(); ctx.arc(0, -9, 4.5, Math.PI, 0); ctx.fill();
+        // Folded Rim
+        ctx.fillRect(-4.5, -9, 9, 2.5);
+        
+        // Hair poking out bottom of beanie (Dark)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-4, -7, 1, 2); // Sideburns
+        ctx.fillRect(3, -7, 1, 2);
+
+        // Eyes (Visible now)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+    // --- JOHN (Sleek Smart Casual - Mock Neck & Trousers) ---
+    else if(n.name === "John") {
+        // 1. LEGS (Tailored Grey Trousers)
+        ctx.fillStyle = '#616161'; // Charcoal Grey
+        ctx.fillRect(-3.5, 6, 3, 9); 
+        ctx.fillRect(0.5, 6, 3, 9);
+        
+        // Black Chelsea Boots
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-3.5, 14, 3, 1.5); ctx.fillRect(0.5, 14, 3, 1.5);
+
+        // 2. BODY (Fitted Black Mock-Neck)
+        ctx.fillStyle = '#212121'; // Matte Black
+        ctx.fillRect(-4.5, -2, 9, 10); // Slim fit
+        
+        // Neck detail (Mock neck collar)
+        ctx.fillRect(-3, -3, 6, 2); 
+
+        // 3. ARMS (Long Sleeves)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-6.5, -1, 2, 7); // Left
+        ctx.fillRect(4.5, -1, 2, 7);  // Right
+        
+        // Silver Watch (Detail)
+        ctx.fillStyle = '#cfd8dc';
+        ctx.fillRect(-6.5, 5, 2, 1);
+
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 6, 2, 2); ctx.fillRect(4.5, 6, 2, 2);
+
+        // 4. HEAD (Slick)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Brown, Pompadour/Quiff)
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-3, -10, 6, 4); // High volume top
+        ctx.fillRect(-3.5, -7, 1, 3); // Tapered sides
+        ctx.fillRect(2.5, -7, 1, 3);
+
+        // Facial Hair (Clean Shaven or subtle stubble)
+        // Let's keep him clean for a sharp look.
+    }
+
+
+
+
+
+
+
+    // --- BIANBIAN (Army Soldier) ---
+    else if(n.name === "Bian Bain") {
+        // 1. LEGS (Camo Pants)
+        ctx.fillStyle = '#33691e'; // Dark Green
+        ctx.fillRect(-4, 6, 3.5, 8); 
+        ctx.fillRect(0.5, 6, 3.5, 8);
+        
+        // Camo spots
+        ctx.fillStyle = '#558b2f'; 
+        ctx.fillRect(-3, 8, 1, 1); ctx.fillRect(1, 10, 1, 1); ctx.fillRect(-2, 12, 1, 1);
+
+        // Combat Boots
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-4.5, 13, 4, 2); ctx.fillRect(0.5, 13, 4, 2);
+
+        // 2. BODY (Tactical Vest)
+        ctx.fillStyle = '#33691e'; ctx.fillRect(-5, -2, 10, 9); // Shirt
+        ctx.fillStyle = '#1b5e20'; ctx.fillRect(-5, 0, 10, 5);  // Vest/Armor
+        
+        // Belt/Pouches
+        ctx.fillStyle = '#212121'; ctx.fillRect(-5, 5, 10, 2); 
+        ctx.fillStyle = '#9e9d24'; ctx.fillRect(-4, 5, 2, 2); ctx.fillRect(2, 5, 2, 2); // Pouches
+
+        // 3. ARMS
+        ctx.fillStyle = '#33691e'; 
+        ctx.fillRect(-7, -1, 2, 5); ctx.fillRect(5, -1, 2, 5); // Sleeves rolled down
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 4, 2, 2); ctx.fillRect(5, 4, 2, 2); // Hands
+
+        // 4. HEAD (Helmet)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Army Helmet
+        ctx.fillStyle = '#1b5e20'; 
+        ctx.beginPath(); ctx.arc(0, -7, 5, Math.PI, 0); ctx.fill(); // Dome
+        ctx.fillRect(-5, -7, 10, 2); // Rim
+        
+        // Chinstrap
+        ctx.fillStyle = '#111'; ctx.fillRect(-3, -2, 6, 1);
+    }
+
+
+
+
+
+
+
+
+
+// --- MARK (Asian Dad - FIXED) ---
+    else if(n.name === "Mark") {
+        // 1. LEGS (Cuffed Jeans)
+        ctx.fillStyle = '#1565c0'; 
+        ctx.fillRect(-3.5, 6, 3, 9); ctx.fillRect(0.5, 6, 3, 9);
+        ctx.fillStyle = '#cfd8dc'; // Cuffs
+        ctx.fillRect(-3.5, 13, 3, 2); ctx.fillRect(0.5, 13, 3, 2); 
+
+        // 2. BODY (Casual Stripe Tee)
+        ctx.fillStyle = '#fff'; ctx.fillRect(-5, -2, 10, 9);
+        ctx.fillStyle = '#37474f'; // Horizontal Stripes
+        ctx.fillRect(-5, 0, 10, 1); ctx.fillRect(-5, 3, 10, 1);
+
+        // 3. BABY (Front Carrier)
+        ctx.fillStyle = '#80deea'; // Cyan Carrier
+        ctx.fillRect(-4, 1, 8, 6);
+        // Baby Head
+        ctx.fillStyle = '#ffe0b2'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, 6.28); ctx.fill(); 
+
+        // 4. ARMS (Supporting Baby)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 2, 2, 5); ctx.fillRect(5, 2, 2, 5); // Forearms up
+
+        // 5. HEAD (Stylish)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Black, neatly styled)
+        ctx.fillStyle = '#1a1a1a'; 
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-4, -6, 1, 3); ctx.fillRect(3, -6, 1, 3); // Sides
+
+        // Eyes (Standard, Open, Friendly)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+
+
+    // --- JUSSI (Finnish Guy) ---
+    else if(n.name === "Jussi") {
+        ctx.fillStyle = '#263238'; ctx.fillRect(-4, 6, 3.5, 9); ctx.fillRect(0.5, 6, 3.5, 9); // Legs
+        ctx.fillStyle = '#fff'; ctx.fillRect(-5, -2, 10, 9); // Body
+        ctx.fillStyle = '#0277bd'; ctx.fillRect(-5, 1, 10, 2); ctx.fillRect(-2, -2, 2, 9); // Cross
+        ctx.fillStyle = '#fff'; ctx.fillRect(-7, -1, 2, 7); ctx.fillRect(5, -1, 2, 7); // Arms
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6); // Head
+        ctx.fillStyle = '#fdd835'; ctx.fillRect(-4, -9, 8, 3); ctx.fillRect(-4, -6, 1, 3); ctx.fillRect(3, -6, 1, 3); // Blonde
+        ctx.fillStyle = '#29b6f6'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1); // Blue Eyes
+    }
+
+
+
+
+
+
+
+
+// --- A GAN (Chic Mom - Striped Top, Jeans, Low Baby) ---
+    else if(n.name === "A Gan") {
+        // 1. LEGS (Slim Fit Blue Jeans)
+        ctx.fillStyle = '#1565c0'; // Classic Denim
+        ctx.fillRect(-3.5, 6, 3, 9); // Left
+        ctx.fillRect(0.5, 6, 3, 9);  // Right
+        
+        // Cuffed hems
+        ctx.fillStyle = '#90caf9'; // Light blue inside denim
+        ctx.fillRect(-3.5, 14, 3, 1); ctx.fillRect(0.5, 14, 3, 1);
+
+        // White Sneakers
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
+
+        // 2. BODY (Breton Striped Top)
+        ctx.fillStyle = '#fff'; // White Base
+        ctx.fillRect(-4.5, -2, 9, 9); 
+        
+        // Black Horizontal Stripes
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-4.5, -1, 9, 1);
+        ctx.fillRect(-4.5, 1, 9, 1);
+        ctx.fillRect(-4.5, 3, 9, 1);
+        ctx.fillRect(-4.5, 5, 9, 1);
+
+        // 3. HEAD (Full Bob Intact)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = '#3e2723'; // Dark Hair
+        ctx.fillRect(-4, -9, 8, 3); // Top Bangs
+        ctx.fillRect(-5, -8, 2, 7); // Left Side
+        ctx.fillRect(3, -8, 2, 7);  // Right Side
+
+        // 4. RIGHT ARM (Holding Orange - Striped Sleeve)
+        // Sleeve Base
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(4.5, -1, 2.5, 7); 
+        // Sleeve Stripes
+        ctx.fillStyle = '#212121';
+        ctx.fillRect(4.5, -1, 2.5, 1); ctx.fillRect(4.5, 1, 2.5, 1);
+        ctx.fillRect(4.5, 3, 2.5, 1);  ctx.fillRect(4.5, 5, 2.5, 1);
+        
+        // Hand
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(4.5, 6, 2.5, 2);
+        
+        // Orange
+        ctx.fillStyle = '#ff6d00'; 
+        ctx.beginPath(); ctx.arc(6, 7, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#43a047'; ctx.fillRect(6, 5, 1, 1);
+
+        // 5. LEFT ARM & BABY (Lowered)
+        // Sleeve Base
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-7, -1, 2.5, 5); 
+        // Sleeve Stripes
+        ctx.fillStyle = '#212121';
+        ctx.fillRect(-7, -1, 2.5, 1); ctx.fillRect(-7, 1, 2.5, 1); ctx.fillRect(-7, 3, 2.5, 1);
+
+        // Forearm (Holding baby)
+        ctx.fillStyle = '#fff'; // Sleeve continues
+        ctx.fillRect(-7, 4, 6, 2.5);
+        ctx.fillStyle = '#212121'; // Stripe on forearm
+        ctx.fillRect(-7, 5, 4, 1);
+
+        // BABY (Positioned low)
+        // Blanket
+        ctx.fillStyle = '#81d4fa'; // Light Blue Blanket (Pop color)
+        ctx.beginPath(); ctx.ellipse(-4, 4, 3.5, 4, -0.4, 0, Math.PI*2); ctx.fill();
+
+        // Baby Head
+        ctx.fillStyle = '#ffe0b2'; 
+        ctx.beginPath(); ctx.arc(-5, 2, 2.8, 0, Math.PI*2); ctx.fill();
+        
+        // Baby Face
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-6, 1.5, 1, 1); ctx.fillRect(-4, 1.5, 1, 1);
+    }
+
+
+
+
+
+   // --- JOSH (Hiker - Two-Tone Shirt to separate arms) ---
+    else if(n.name === "Josh") {
+        // 0. BACKPACK
+        ctx.fillStyle = '#5d4037'; ctx.fillRect(-6, -4, 12, 10); 
+
+        // 1. LEGS (Hiking Shorts)
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-3.5, 6, 3, 9); ctx.fillRect(0.5, 6, 3, 9);
+        // Khaki Shorts
+        ctx.fillStyle = '#8d6e63'; 
+        ctx.fillRect(-4, 6, 3.5, 5); ctx.fillRect(0.5, 6, 3.5, 5);
+        // Sneakers
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4, 14, 3.5, 1.5); ctx.fillRect(0.5, 14, 3.5, 1.5);
+
+        // 2. BODY (Darker Core)
+        ctx.fillStyle = '#37474f'; // Dark Blue-Grey Torso
+        ctx.fillRect(-5, -2, 10, 9); 
+
+        // 3. ARMS (Lighter Sleeves - Contrast)
+        ctx.fillStyle = '#78909c'; // Lighter Blue-Grey Sleeves
+        ctx.fillRect(-8, -1, 3, 7); // Left Sleeve (Wider separation)
+        ctx.fillRect(5, -1, 3, 7);  // Right Sleeve
+        
+        // Seam Lines (To distinctly separate body from arm)
+        ctx.fillStyle = '#263238'; 
+        ctx.fillRect(-5, -1, 1, 7); // Left Seam
+        ctx.fillRect(4, -1, 1, 7);  // Right Seam
+
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-8, 6, 3, 2); ctx.fillRect(5, 6, 3, 2);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = '#fdd835'; // Blonde
+        ctx.fillRect(-4, -9, 8, 3); 
+        ctx.beginPath(); ctx.arc(0, -10, 2.5, 0, 6.28); ctx.fill(); // Bun
+        ctx.fillStyle = '#fbc02d'; ctx.fillRect(-1, -1, 2, 2); // Goatee
+
+        // Camera
+        ctx.fillStyle = '#000'; ctx.fillRect(1, 3, 4, 3);
+        ctx.strokeStyle = '#90a4ae'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(1, 3); ctx.lineTo(-3, -2); ctx.stroke();
+    }
+
+   // --- PAULINE (Long Leggings & Long Sleeves) ---
+    else if(n.name === "Pauline") {
+        // 0. BACKPACK
+        ctx.fillStyle = '#c62828'; // Red Bag
+        ctx.fillRect(-5, -4, 10, 9);
+
+        // 1. LEGS (Long Black Leggings)
+        ctx.fillStyle = '#212121'; // Black Pants
+        ctx.fillRect(-3.5, 6, 3, 9); // Left Leg full length
+        ctx.fillRect(0.5, 6, 3, 9);  // Right Leg full length
+        
+        // Side Stripe (Sporty Detail)
+        ctx.fillStyle = '#4dd0e1'; // Matches shirt
+        ctx.fillRect(-3.5, 6, 0.5, 9); 
+        ctx.fillRect(3, 6, 0.5, 9);
+
+        // Sneakers
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
+
+        // 2. BODY (Darker Cyan Vest/Torso)
+        ctx.fillStyle = '#00838f'; // Dark Cyan
+        ctx.fillRect(-4, -1, 8, 8);
+        
+        // Zipper Line
+        ctx.fillStyle = '#006064'; 
+        ctx.fillRect(-0.5, -1, 1, 8);
+
+        // 3. ARMS (Lighter Long Sleeves - High Contrast)
+        ctx.fillStyle = '#4dd0e1'; // Light Cyan
+        ctx.fillRect(-7, -1, 3, 7); // Left Sleeve
+        ctx.fillRect(4, -1, 3, 7);  // Right Sleeve
+
+        // Armpit Gap/Shadow to separate
+        ctx.fillStyle = 'rgba(0,0,0,0.2)';
+        ctx.fillRect(-4, -1, 1, 4); 
+        ctx.fillRect(3, -1, 1, 4);
+
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 6, 3, 2); ctx.fillRect(4, 6, 3, 2);
+
+        // 4. HEAD (Ponytail)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = '#fff176'; // Blonde
+        ctx.fillRect(-4, -9, 8, 4); 
+        // Ponytail
+        ctx.beginPath(); ctx.moveTo(4, -8); ctx.quadraticCurveTo(9, -6, 7, 1); ctx.lineTo(5, 0); ctx.fill();
+    }
+
+
+
+
+
+    // --- ANGUS (Fashion Dude - No Hood, Khaki Pants) ---
+    else if(n.name === "Angus") {
+        // 1. LEGS (Khaki Cargo Pants - High Contrast)
+        ctx.fillStyle = '#d7ccc8'; // Light Beige/Khaki
+        ctx.fillRect(-4, 6, 3.5, 8); 
+        ctx.fillRect(0.5, 6, 3.5, 8);
+        
+        // Chunky White Sneakers
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4.5, 14, 4, 1.5); ctx.fillRect(0.5, 14, 4, 1.5);
+
+        // 2. BODY (Black Hoodie/Sweatshirt)
+        ctx.fillStyle = '#212121'; // Black
+        ctx.fillRect(-5.5, -2, 11, 10); // Oversized fit
+        
+        // Kangaroo Pocket (Dark Grey)
+        ctx.fillStyle = '#424242'; 
+        ctx.beginPath(); 
+        ctx.moveTo(-3, 8); ctx.lineTo(3, 8); 
+        ctx.lineTo(4, 4); ctx.lineTo(-4, 4); 
+        ctx.fill();
+
+        // White Drawstrings (To show it is a hoodie)
+        ctx.fillStyle = '#eee';
+        ctx.fillRect(-2, 0, 0.5, 4); 
+        ctx.fillRect(1.5, 0, 0.5, 4);
+
+        // 3. ARMS (Long Sleeves)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-7.5, -1, 2, 7); ctx.fillRect(5.5, -1, 2, 7);
+        // Hands poking out
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7.5, 6, 2, 1); ctx.fillRect(5.5, 6, 2, 1);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // HAIR (Light Gray Buzz Cut)
+        ctx.fillStyle = '#e0e0e0'; // Very Light Gray
+        ctx.fillRect(-3, -9, 6, 2); // Short top
+        
+        // EYES
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+
+
+
+
+
+// --- FANG (The Reader - Shirt, Glasses, Book) ---
+    else if(n.name === "Fang") {
+        // 1. LEGS (Smart Trousers)
+        ctx.fillStyle = '#455a64'; // Dark Slate Grey
+        ctx.fillRect(-3.5, 6, 3, 9); // Left
+        ctx.fillRect(0.5, 6, 3, 9);  // Right
+        
+        // Shoes
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
+
+        // 2. BODY (Button-Up Oxford Shirt)
+        ctx.fillStyle = '#e3f2fd'; // Pale Blue
+        ctx.fillRect(-5, -2, 10, 9);
+        
+        // Button Placket (Center strip)
+        ctx.fillStyle = '#bbdefb';
+        ctx.fillRect(-0.5, -2, 1, 9);
+        
+        // White Collar
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(-4, -1); ctx.lineTo(-2, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(4, -1); ctx.lineTo(2, 0); ctx.fill();
+
+        // 3. ARMS & BOOK
+        ctx.fillStyle = '#e3f2fd'; // Sleeves
+        ctx.fillRect(-7, -1, 2, 6); // Left Arm (Down)
+        ctx.fillRect(5, -1, 2, 4);  // Right Arm (Bent up holding book)
+
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 5, 2, 2);
+        ctx.fillRect(5, 3, 2, 2);
+
+        // THE BOOK (Held in Right Hand)
+        ctx.fillStyle = '#5d4037'; // Leather Cover
+        ctx.fillRect(3, 1, 6, 5);
+        ctx.fillStyle = '#fff'; // Pages
+        ctx.fillRect(3.5, 1.5, 5, 4);
+        // Text lines detail
+        ctx.fillStyle = '#999';
+        ctx.fillRect(4, 2.5, 4, 0.5); 
+        ctx.fillRect(4, 3.5, 4, 0.5); 
+        ctx.fillRect(4, 4.5, 4, 0.5);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // Hair (Neat Side Part)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-4, -6, 1, 2); // Side
+        ctx.fillRect(3, -6, 1, 2);  // Side
+
+        // GLASSES (Black Rectangular Frames)
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.5;
+        // Left Lens
+        ctx.strokeRect(-2.5, -5, 2, 1.5);
+        // Right Lens
+        ctx.strokeRect(0.5, -5, 2, 1.5);
+        // Bridge
+        ctx.beginPath(); ctx.moveTo(-0.5, -4.5); ctx.lineTo(0.5, -4.5); ctx.stroke();
+    }
+
+
+
+
+
+// --- AVON (Navy Maxi Skirt, Textured Top, Ponytail) ---
+    else if(n.name === "Avon") {
+        // 1. LEGS (Visible at bottom)
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-3, 13, 2.5, 3); ctx.fillRect(0.5, 13, 2.5, 3);
+        
+        // Flats (Black)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
+
+        // 2. SKIRT (Navy Maxi - Extra Long)
+        ctx.fillStyle = '#1a237e'; // Deep Navy
+        ctx.beginPath();
+        ctx.moveTo(-4, 5); ctx.lineTo(4, 5);   // Waist
+        ctx.lineTo(8, 14); ctx.lineTo(-8, 14); // Hem (Ankle length)
+        ctx.fill();
+
+        // 3. BODY (Detailed Ribbed Top)
+        ctx.fillStyle = '#fff'; // White Base
+        ctx.fillRect(-4.5, -2, 9, 7); 
+        
+        // Texture: Vertical Ribbing (Light Grey lines)
+        ctx.fillStyle = '#e0e0e0'; 
+        ctx.fillRect(-2.5, -2, 0.5, 7);
+        ctx.fillRect(0, -2, 0.5, 7);
+        ctx.fillRect(2.5, -2, 0.5, 7);
+
+        // Neckline Detail
+        ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.arc(0, -2, 2.5, 0, Math.PI); ctx.stroke();
+
+        // 4. ARMS (Short Sleeves)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-7, -1, 2, 3); ctx.fillRect(5, -1, 2, 3);
+        
+        // Skin Arms
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 2, 2, 5); ctx.fillRect(5, 2, 2, 5);
+
+        // 5. HEAD (Ponytail)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = '#4e342e'; // Dark Brown Hair
+        ctx.fillRect(-4, -9, 8, 4); 
+        // Ponytail
+        ctx.beginPath(); ctx.moveTo(4, -6); ctx.quadraticCurveTo(8, -2, 6, 4); ctx.lineTo(4, 2); ctx.fill();
+    }
+
+    // --- SHARON (Coat, Shirt, Visible Legs) ---
+    else if(n.name === "Sharon") {
+        // 1. LEGS (Clearly Visible now)
+        ctx.fillStyle = '#37474f'; // Dark Tights/Stockings
+        ctx.fillRect(-3, 11, 2.5, 5); 
+        ctx.fillRect(0.5, 11, 2.5, 5);
+        
+        // Boots
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-3.5, 14.5, 3, 1.5); ctx.fillRect(0.5, 14.5, 3, 1.5);
+
+        // 2. SKIRT (Dark Grey - Slightly shorter to show legs)
+        ctx.fillStyle = '#424242'; 
+        ctx.beginPath();
+        ctx.moveTo(-4, 5); ctx.lineTo(4, 5);
+        ctx.lineTo(6.5, 12); ctx.lineTo(-6.5, 12); // Ends at calf
+        ctx.fill();
+
+        // 3. BODY (Patterned Shirt)
+        ctx.fillStyle = '#e0f7fa'; // Light Blue base
+        ctx.fillRect(-4, -2, 8, 7);
+        // Detail: Buttons & Collar
+        ctx.fillStyle = '#006064'; 
+        ctx.fillRect(-0.5, -2, 1, 7); 
+        ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(-4, -1); ctx.lineTo(-2, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(4, -1); ctx.lineTo(2, 0); ctx.fill();
+
+        // 4. COAT (Open Camel Coat)
+        ctx.fillStyle = '#d7ccc8'; 
+        ctx.fillRect(-6, -2, 2.5, 11); // Left Panel
+        ctx.fillRect(3.5, -2, 2.5, 11); // Right Panel
+
+        // 5. ARMS (Coat Sleeves)
+        ctx.fillStyle = '#d7ccc8'; 
+        ctx.fillRect(-7.5, -1, 2, 7); 
+        ctx.fillRect(5.5, -1, 2, 7);
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7.5, 6, 2, 2); ctx.fillRect(5.5, 6, 2, 2);
+
+        // 6. HEAD (Long Hair)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = '#111'; // Black Hair
+        ctx.fillRect(-4, -9, 8, 3); 
+        ctx.fillRect(-5, -6, 2, 8); 
+        ctx.fillRect(3, -6, 2, 8);
+    }
+
+
+
+
+
+
+// --- TOMO CHIU (Chunky Rapper - Short & Stout) ---
+    else if(n.name === "Tomo Chiu") {
+        // 1. LEGS (Short & Baggy)
+        ctx.fillStyle = '#1565c0'; // Blue Denim
+        ctx.fillRect(-4, 6, 3.5, 5); // Left (Shortened height from 8 -> 5)
+        ctx.fillRect(0.5, 6, 3.5, 5);  // Right
+        
+        // High Top Sneakers (Moved up due to shorter legs)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4.5, 11, 4, 2); ctx.fillRect(0.5, 11, 4, 2);
+        ctx.fillStyle = '#d32f2f'; // Red detail
+        ctx.fillRect(-3.5, 11, 2, 2); ctx.fillRect(1.5, 11, 2, 2);
+
+        // 2. BODY (Hoodie - Wide)
+        ctx.fillStyle = '#d32f2f'; // Red Hoodie
+        ctx.fillRect(-5, -2, 10, 9); 
+        
+        // Kangaroo Pocket
+        ctx.fillStyle = '#b71c1c'; 
+        ctx.beginPath(); 
+        ctx.moveTo(-3, 7); ctx.lineTo(3, 7); 
+        ctx.lineTo(4, 4); ctx.lineTo(-4, 4); 
+        ctx.fill();
+
+        // 3. BLING (Gold Chain)
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, -2, 3, 0, Math.PI); ctx.stroke();
+
+        // 4. ARMS (Tucked)
+        ctx.fillStyle = '#d32f2f'; 
+        ctx.fillRect(-7, -1, 2, 6); // Left
+        ctx.fillRect(5, -1, 2, 6);  // Right
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 5, 2, 2); ctx.fillRect(5, 5, 2, 2);
+
+        // 5. HEAD (Round Face)
+        ctx.fillStyle = skinColor; 
+        ctx.beginPath(); ctx.arc(0, -6, 4, 0, 6.28); ctx.fill(); 
+        
+        // Face
+        ctx.fillStyle = '#111'; // Eyes
+        ctx.fillRect(-2, -6, 1, 1); ctx.fillRect(1, -6, 1, 1);
+        ctx.fillStyle = '#333'; // Stubble
+        ctx.fillRect(-1, -3, 2, 1);
+
+        // 6. HAT (Backwards Snapback)
+        ctx.fillStyle = '#212121'; 
+        ctx.beginPath(); ctx.arc(0, -8, 4.1, Math.PI, 0); ctx.fill();
+        ctx.fillRect(-4, -8, 8, 1.5); // Brim
+        ctx.fillStyle = '#424242';
+        ctx.fillRect(-2, -7, 4, 1); // Snap
+    }
+
+   // --- FU JING (Messi Fan - Jersey, Shorts over Leggings) ---
+    else if(n.name === "Fu Jing") {
+        // 1. LEGS (Black Leggings Underneath)
+        ctx.fillStyle = '#212121'; // Matte Black Leggings
+        ctx.fillRect(-3, 6, 2.5, 9); // Left Leg (Tight)
+        ctx.fillRect(0.5, 6, 2.5, 9);  // Right Leg (Tight)
+
+        // 2. SHORTS (Layered Over Leggings)
+        ctx.fillStyle = '#000'; // Pure Black Shorts
+        ctx.fillRect(-4, 6, 3.5, 5); // Left (Wider/Shorter)
+        ctx.fillRect(0.5, 6, 3.5, 5);  // Right
+
+        // Sport Shoes
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 15, 3, 1.5); ctx.fillRect(0.5, 15, 3, 1.5);
+
+        // 3. BODY (Argentina Jersey: Stripes)
+        ctx.fillStyle = '#fff'; // White Base
+        ctx.fillRect(-5, -2, 10, 9);
+        
+        // Light Blue Vertical Stripes
+        ctx.fillStyle = '#4fc3f7'; // Argentina Blue
+        ctx.fillRect(-3, -2, 2, 9); 
+        ctx.fillRect(1, -2, 2, 9);
+
+        // NUMBER 10 (Black on Chest)
+        ctx.fillStyle = '#111';
+        // Draw "1"
+        ctx.fillRect(-1.5, 1, 1, 4); 
+        // Draw "0"
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
+        ctx.strokeRect(0.5, 1.5, 2, 3);
+
+        // 4. ARMS (Short Sleeves)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-7, -1, 2, 4); ctx.fillRect(5, -1, 2, 4);
+        // Blue trim on sleeves
+        ctx.fillStyle = '#4fc3f7';
+        ctx.fillRect(-7, 2, 2, 1); ctx.fillRect(5, 2, 2, 1);
+
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 3, 2, 3); ctx.fillRect(5, 3, 2, 3);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Short Black Sporty Cut)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-4, -9, 8, 3); 
+        ctx.fillRect(-4, -6, 1, 2); ctx.fillRect(3, -6, 1, 2);
+
+        // Eyes
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    }
 
 
 
@@ -8008,172 +9891,190 @@ function drawEnv(x, y, k, e) {  // <--- Ensure ', e' is here
         
         let cx = px + w/2; 
         let cy = py + h - 5; 
-        
-        let rimY = py + (h * 0.25); 
-        let rimW = w * 0.55;       
-        let baseW = w * 0.95;     
+
+        // --- GEOMETRY FIX: SHORTER & SQUATTER ---
+        // 1. LOWER RIM (0.45 instead of 0.2) -> Makes it short
+        let topY = py + (h * 0.45); 
+        // 2. MOUTH WIDTH (0.22) -> Balanced for short height
+        let rimRad = w * 0.22; 
+        // 3. BASE WIDTH
+        let baseW = w * 0.90; 
 
         let t = Date.now();
         let pulse = Math.sin(t / 250) * 0.1; 
 
-        // STABLE NOISE
+        // Noise Function
         let seed = (e.x * 999.9) + (e.y * 111.1);
         const getJag = (index, amplitude) => {
             let x = Math.sin(seed + index) * 10000;
             return (x - Math.floor(x)) * amplitude;
         };
 
-        // --- A. MOUNTAIN BODY ---
-        let bodyGrad = ctx.createLinearGradient(px, rimY, px, cy);
-        bodyGrad.addColorStop(0, '#4e342e');   // Ash Highlight
-        bodyGrad.addColorStop(0.5, '#212121'); // Dark Rock
+        // ===============================================
+        // 1. MOUNTAIN BODY (Squat Cone)
+        // ===============================================
+        let bodyGrad = ctx.createLinearGradient(px, topY, px, cy);
+        bodyGrad.addColorStop(0, '#3e2723');   // Ash Top
+        bodyGrad.addColorStop(0.4, '#1a1a1a'); // Dark Rock
         bodyGrad.addColorStop(1, '#000000');   // Base
         
         ctx.fillStyle = bodyGrad;
         ctx.beginPath();
-        
-        // Left Slope
-        ctx.moveTo(cx - rimW/2, rimY);
-        ctx.lineTo(cx - baseW*0.35 + getJag(1,6), rimY + (h*0.3)); 
-        ctx.lineTo(cx - baseW*0.45 + getJag(2,8), rimY + (h*0.6));
-        ctx.lineTo(cx - baseW/2 + getJag(3,5), cy); 
-        // Bottom
+        ctx.moveTo(cx - rimRad, topY); 
+        ctx.lineTo(cx - baseW*0.4 + getJag(1,4), topY + (h*0.25)); // Shorter slope
+        ctx.lineTo(cx - baseW/2 + getJag(2,4), cy); 
         ctx.lineTo(cx, cy + 5); 
-        ctx.lineTo(cx + baseW/2 + getJag(4,5), cy); 
-        // Right Slope
-        ctx.lineTo(cx + baseW*0.45 + getJag(5,8), rimY + (h*0.6));
-        ctx.lineTo(cx + baseW*0.35 + getJag(6,6), rimY + (h*0.3));
-        ctx.lineTo(cx + rimW/2, rimY); 
-        
-        ctx.closePath();
+        ctx.lineTo(cx + baseW/2 + getJag(3,4), cy); 
+        ctx.lineTo(cx + baseW*0.4 + getJag(4,4), topY + (h*0.25)); 
+        ctx.lineTo(cx + rimRad, topY); 
         ctx.fill();
 
-        // --- B1. DARK WRINKLES (Shadows) ---
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'; 
-        ctx.lineWidth = 3; 
-        ctx.lineCap = 'round';
+        // ===============================================
+        // 2. RIPPED CRACKS (Black Shadows)
+        // ===============================================
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)'; 
         ctx.beginPath();
-        // Wrinkle 1
-        ctx.moveTo(cx - rimW*0.4, rimY + 10);
-        ctx.lineTo(cx - baseW*0.3 + getJag(50,2), rimY + h*0.4);
-        ctx.lineTo(cx - baseW*0.4, cy - 8);
-        // Wrinkle 2
-        ctx.moveTo(cx + rimW*0.35, rimY + 12);
-        ctx.lineTo(cx + baseW*0.3 + getJag(51,3), rimY + h*0.5);
-        ctx.lineTo(cx + baseW*0.35, cy - 5);
-        // Wrinkle 3
-        ctx.moveTo(cx - 5, rimY + 20);
-        ctx.lineTo(cx + 2 + getJag(52,4), rimY + h*0.4);
-        ctx.lineTo(cx - 3, cy - 10);
-        ctx.stroke();
+        
+        // Left Side Tear
+        let lx = cx - (rimRad * 1.1); 
+        let ly = topY + 8; // Start lower
+        ctx.moveTo(lx, ly);
+        ctx.lineTo(lx - 5, ly + 5);
+        ctx.lineTo(lx + 2, ly + 15); 
+        ctx.lineTo(lx - 6, ly + 25); 
+        ctx.lineTo(lx - 2, ly + 25); 
+        ctx.lineTo(lx + 4, ly + 15);
+        ctx.lineTo(lx + 1, ly + 5);
+        ctx.fill();
 
-        // --- B2. ORANGE SURFACE VEINS (Added On Top) ---
-        ctx.strokeStyle = `rgba(255, 87, 34, ${0.6 + pulse})`; 
-        ctx.lineWidth = 1.5; 
-        ctx.beginPath();
-        ctx.moveTo(cx - rimW*0.5, rimY + 25); 
-        ctx.lineTo(cx - baseW*0.2 + getJag(60,2), rimY + 45);
-        ctx.moveTo(cx + rimW*0.4, rimY + 15);
-        ctx.lineTo(cx + rimW*0.5 + getJag(61,2), rimY + 30);
-        ctx.stroke();
+        // Right Side Tear
+        let rx = cx + (rimRad * 1.0);
+        let ry = topY + 5;
+        ctx.moveTo(rx, ry);
+        ctx.lineTo(rx + 6 + getJag(50,3), ry + 10);
+        ctx.lineTo(rx + 2, ry + 20);
+        ctx.lineTo(rx + 8, ry + 30);
+        ctx.lineTo(rx + 4, ry + 30); 
+        ctx.lineTo(rx - 1, ry + 20);
+        ctx.lineTo(rx + 3, ry + 10);
+        ctx.fill();
 
-        // --- C. WIDE MAGMA FISSURES ---
-        ctx.fillStyle = `rgba(183, 28, 28, ${0.8 + pulse})`;
+        // ===============================================
+        // 3. MAGMA VEINS (Orange Rips)
+        // ===============================================
+        ctx.fillStyle = `rgba(255, 61, 0, ${0.8 + pulse})`;
         ctx.shadowColor = '#d84315'; ctx.shadowBlur = 10;
         ctx.beginPath();
-        let fx = cx - (rimW * 0.3);
-        ctx.moveTo(fx, rimY + 25);
-        ctx.lineTo(fx + 5, rimY + 25); 
-        ctx.lineTo(fx + 6 + getJag(10,3), rimY + 45);
-        ctx.lineTo(fx - 2 + getJag(11,3), rimY + 60); 
-        ctx.lineTo(fx - 4, rimY + 45);
+        
+        // Center Fissure (Adjusted for short height)
+        let mx = cx + 5;
+        let my = topY + 15;
+        ctx.moveTo(mx, my);
+        ctx.lineTo(mx + 6, my + 4);
+        ctx.lineTo(mx + 2, my + 15);
+        ctx.lineTo(mx + 10 + getJag(60,4), my + 25);
+        ctx.lineTo(mx + 4, my + 25); 
+        ctx.lineTo(mx - 3, my + 15);
+        ctx.lineTo(mx + 1, my + 4);
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // --- D. THE RIM & LAVA ---
-        // Back Wall
-        ctx.fillStyle = '#0d0d0d';
+        // Base glowing cracks
+        ctx.strokeStyle = `rgba(255, 87, 34, ${0.6 + pulse})`;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        for(let i=0; i<=12; i++) {
-            let ang = Math.PI + (i/12)*Math.PI;
-            let r = (rimW/2) + getJag(20+i, 3);
-            let rx = cx + Math.cos(ang) * r;
-            let ry = rimY + Math.sin(ang) * (r*0.4);
-            if(i===0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
-        }
-        ctx.fill();
+        ctx.moveTo(cx - 15, cy - 8); ctx.lineTo(cx - 25, cy - 4);
+        ctx.moveTo(cx + 20, cy - 10); ctx.lineTo(cx + 30, cy - 5);
+        ctx.stroke();
 
-        // Lava Pool
+        // ===============================================
+        // 4. THE RIM & LAVA
+        // ===============================================
+        let outerPoints = [];
+        let innerPoints = [];
+        let numPoints = 20;
+        let pers = 0.4; // Slightly rounder perspective since we are lower
+
+        for(let i=0; i<=numPoints; i++) {
+            let ang = (i/numPoints) * Math.PI * 2;
+            
+            // Outer Rim
+            let rOut = rimRad + getJag(100+i, 3); 
+            let ox = cx + Math.cos(ang) * rOut;
+            let oy = topY + Math.sin(ang) * (rOut * pers);
+            outerPoints.push({x:ox, y:oy});
+
+            // Inner Rim
+            let thick = 2 + Math.abs(getJag(200+i, 4));
+            let rIn = rOut - thick;
+            let ix = cx + Math.cos(ang) * rIn;
+            let iy = topY + 3 + Math.sin(ang) * (rIn * pers); 
+            innerPoints.push({x:ix, y:iy});
+        }
+
+        // A. LAVA FILL
         ctx.save();
         ctx.beginPath();
-        ctx.ellipse(cx, rimY+4, rimW/2 - 2, (rimW/2)*0.35, 0, 0, Math.PI*2);
+        ctx.moveTo(innerPoints[0].x, innerPoints[0].y);
+        for(let p of innerPoints) ctx.lineTo(p.x, p.y);
         ctx.clip();
-        let lGrad = ctx.createRadialGradient(cx, rimY+5, 1, cx, rimY+5, rimW);
-        lGrad.addColorStop(0, '#ffd600'); lGrad.addColorStop(0.5, '#d84315'); lGrad.addColorStop(1, '#3e2723');
+        
+        let lGrad = ctx.createRadialGradient(cx, topY+5, 1, cx, topY+5, rimRad);
+        lGrad.addColorStop(0, '#fff59d'); 
+        lGrad.addColorStop(0.5, '#ff6f00'); 
+        lGrad.addColorStop(1, '#bf360c'); 
         ctx.fillStyle = lGrad;
         ctx.fillRect(px, py, w, h);
 
-        // Popping Bubbles
+        // Bubbles
         for(let i=0; i<3; i++) {
-            let cycle = (t + i*800) % 2000; 
+            let cycle = (t + i*700) % 2000; 
             if(cycle < 1000) { 
-                let size = (cycle / 1000) * 5; 
+                let size = (cycle / 1000) * 4; 
                 let alpha = 1 - (cycle / 1000); 
-                let bx = cx + Math.sin(i*99)*10;
-                let by = (rimY+4) + Math.cos(i*99)*3;
-                ctx.fillStyle = `rgba(255, 255, 0, ${alpha})`;
+                let bx = cx + Math.sin(i*66) * (rimRad*0.4);
+                let by = topY + 3 + Math.cos(i*66) * (rimRad*0.1); 
+                ctx.fillStyle = `rgba(255, 255, 200, ${alpha})`;
                 ctx.beginPath(); ctx.arc(bx, by, size, 0, 6.28); ctx.fill();
-                ctx.fillStyle = '#fff';
-                ctx.beginPath(); ctx.arc(bx-1, by-1, size*0.3, 0, 6.28); ctx.fill();
             }
         }
         ctx.restore();
 
-        // Front Wall
-        ctx.fillStyle = '#4e342e'; 
+        // B. CRUST (Jagged Top)
+        ctx.fillStyle = '#212121'; 
         ctx.beginPath();
-        for(let i=0; i<=12; i++) {
-            let ang = (i/12)*Math.PI; 
-            let r = (rimW/2) + getJag(40+i, 3);
-            let rx = cx + Math.cos(ang) * r;
-            let ry = rimY + Math.sin(ang) * (r*0.4); 
-            if(i===0) ctx.moveTo(rx, ry); else ctx.lineTo(rx, ry);
-        }
-        for(let i=12; i>=0; i--) {
-            let ang = (i/12)*Math.PI; 
-            let r = (rimW/2) - 3 + getJag(40+i, 2); 
-            let rx = cx + Math.cos(ang) * r;
-            let ry = rimY + 2 + Math.sin(ang) * (r*0.4); 
-            ctx.lineTo(rx, ry);
-        }
+        ctx.moveTo(outerPoints[0].x, outerPoints[0].y);
+        for(let p of outerPoints) ctx.lineTo(p.x, p.y);
+        for(let i=innerPoints.length-1; i>=0; i--) ctx.lineTo(innerPoints[i].x, innerPoints[i].y);
+        ctx.closePath();
         ctx.fill();
 
-        // --- E. ATMOSPHERE (OBVIOUS STEAM) ---
-        // 3 continuous puffs rising higher and thicker
-        for(let i=0; i<3; i++) {
-            let cycleLen = 2000; // 2 seconds per puff loop
-            let offset = i * (cycleLen / 3); // Stagger them equally
-            let prog = ((t + offset) % cycleLen) / cycleLen; // 0.0 to 1.0
-            
-            // Dynamics
-            let rise = prog * 40; // Rises 40 pixels high
-            let size = 5 + (prog * 10); // Grows from 5px to 15px
-            let alpha = (1 - prog) * 0.6; // Starts at 0.6 opacity (Very Visible)
-            let wiggle = Math.sin((t / 400) + i) * (5 + prog * 10); // Sways wider at top
+        // C. INNER RIM HIGHLIGHT
+        ctx.strokeStyle = `rgba(255, 87, 34, ${0.5 + pulse})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(innerPoints[0].x, innerPoints[0].y);
+        for(let p of innerPoints) ctx.lineTo(p.x, p.y);
+        ctx.stroke();
 
-            // Draw Puff
-            ctx.fillStyle = `rgba(220, 220, 220, ${alpha})`; // Light Grey/White
+        // ===============================================
+        // 5. ATMOSPHERE (Steam)
+        // ===============================================
+        for(let i=0; i<3; i++) {
+            let cycleLen = 2000; 
+            let offset = i * (cycleLen / 3); 
+            let prog = ((t + offset) % cycleLen) / cycleLen; 
+            
+            let rise = prog * 35; // Lower rise
+            let size = 3 + (prog * 10); 
+            let alpha = (1 - prog) * 0.4; 
+            let wiggle = Math.sin((t / 350) + i) * (3 + prog * 5);
+
+            ctx.fillStyle = `rgba(100, 100, 100, ${alpha})`; 
             ctx.beginPath();
-            ctx.arc(cx + wiggle, rimY - 5 - rise, size, 0, Math.PI*2);
+            ctx.arc(cx + wiggle, topY - rise, size, 0, Math.PI*2);
             ctx.fill();
         }
-
-        // Heat Haze (Glow)
-        ctx.shadowColor = '#e65100'; 
-        ctx.shadowBlur = 20 + (pulse * 30); 
-        ctx.fillStyle = 'rgba(0,0,0,0)'; 
-        ctx.beginPath(); ctx.ellipse(cx, rimY, rimW/2, rimW/4, 0, 0, Math.PI*2); ctx.fill();
-        ctx.shadowBlur = 0;
     }
 
     // --- PASTE END ---
