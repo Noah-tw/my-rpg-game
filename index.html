@@ -1802,6 +1802,22 @@ const AudioSys = {
             });
         }
         this.currentBgmKey = key;
+    }, // <--- Note the comma here, it connects the next function
+
+    // --- MAC AUDIO WARM-UP FIX ---
+    warmUp: function() {
+        const critical = ['swing', 'bow', 'magic', 'explode', 'step', 'hurt', 'thud'];
+        
+        critical.forEach(k => {
+            // Check if sound exists in cache
+            if(this.cache && this.cache[k]) {
+                let s = this.cache[k].cloneNode();
+                s.volume = 0; // Silent
+                // Force browser to "wake up" this sound
+                s.play().catch(e => {}); 
+            }
+        });
+        console.log("Audio Warmed Up");
     }
 };
 
@@ -2028,6 +2044,9 @@ function loadGame(slotId) {
 
         
         const data = JSON.parse(raw);
+	AudioSys.warmUp();
+
+
 
         // 2. INIT ENGINE (Audio, Inputs - Shared Setup)
         // We use the function created in Step 1 to prepare the engine
@@ -2477,7 +2496,10 @@ function initSharedState() {
 function startNewGame(cls) {
     // A. Visuals & Audio
     AudioSys.play('class_choose');
-    
+    AudioSys.warmUp();
+
+
+
     // B. Run Shared Setup
     initSharedState();
 
