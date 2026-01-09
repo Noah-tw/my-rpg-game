@@ -2405,6 +2405,16 @@ S.farm.justSlept = true; // Signal for tutorial
             ico.style.fontSize = "40px";
         }
 
+// --- [FIX] PREVENT UI TAKEOVER ON DRIVEWAY ---
+        // Only update the text if we are actually inside the farm (Past x=118).
+        // This keeps the RPG "Current Mission" text visible while walking on the bridge.
+        if (S.p.x <= 118) return; 
+        // ---------------------------------------------
+
+
+
+
+
 // UPDATE QUEST PANEL TEXT
        // UPDATE QUEST PANEL TEXT
         let qPanel = document.getElementById('quest-txt');
@@ -2746,6 +2756,15 @@ function draw() {
             if(x<0||y<0||x>=MAP_S||y>=MAP_S) continue;
             let t = S.map[y*MAP_S+x];
             let px = Math.floor(x*TILE-S.cam.x+sx), py = Math.floor(y*TILE-S.cam.y);
+// [NEW] TEXTURE MATH (Matches Main Game)
+            let seed = Math.abs(Math.sin(x * 12.9898 + y * 78.233));
+            let r1 = (seed * 100) % 1;
+            let r2 = (seed * 200) % 1;
+            let r3 = (seed * 300) % 1;
+            let r4 = (seed * 400) % 1;
+
+
+
 
             // [FIX 1] VOID LOGIC: Water (0) is BLACK unless inside the Farm boundaries.
             // The Farm is located between X:120-160 and Y:120-160.
@@ -2761,10 +2780,18 @@ function draw() {
                 }
             }
 
-            // [FIX 2] DRAW BRIDGE (Tile ID 10)
+            // [FIX 2] DRAW BRIDGE CONNECTOR (Tile ID 10) - Matches Main Game Dirt
             if (t === 10) {
-                ctx.fillStyle = '#5d4037'; // Solid Brown (Same as index.html)
-                ctx.fillRect(px, py, TILE+1, TILE+1); // +1 to prevent black lines
+                ctx.fillStyle = '#5d4037'; // Base Dirt
+                ctx.fillRect(px, py, TILE+1, TILE+1);
+                
+                // Gravel Texture (Matches index.html)
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.18)'; 
+                ctx.fillRect(px + (r1 * (TILE-3)), py + (r2 * (TILE-3)), 3, 3);
+                ctx.fillRect(px + (r3 * (TILE-3)), py + (r4 * (TILE-3)), 3, 3);
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.15)'; 
+                ctx.fillRect(px + (r2 * (TILE-2)), py + (r3 * (TILE-2)), 2, 2);
+                ctx.fillRect(px + (r4 * (TILE-2)), py + (r1 * (TILE-2)), 2, 2);
                 continue;
             }
 
@@ -2923,10 +2950,22 @@ function draw() {
                     }
 
                 } else {
-                    // Normal Road (Dirt)
-                    ctx.fillStyle = '#eeb765'; ctx.fillRect(px, py, TILE, TILE); 
-                    if ((x+y)%2===0) { ctx.fillStyle='rgba(0,0,0,0.1)'; ctx.fillRect(px+20, py+20, 4, 4); }
+                    // Normal Farm Road (Original Yellow + New Texture)
+                    ctx.fillStyle = '#eeb765'; // <--- YELLOW BASE
+                    ctx.fillRect(px, py, TILE+1, TILE+1);
+                    
+                    // Texture (Adjusted for light background)
+                    // 1. Darker Brown rocks (Contrast against yellow)
+                    ctx.fillStyle = 'rgba(93, 64, 55, 0.15)'; 
+                    ctx.fillRect(px + (r1 * (TILE-3)), py + (r2 * (TILE-3)), 3, 3);
+                    ctx.fillRect(px + (r3 * (TILE-3)), py + (r4 * (TILE-3)), 3, 3);
+                    
+                    // 2. White highlights (Sunlight)
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)'; 
+                    ctx.fillRect(px + (r2 * (TILE-2)), py + (r3 * (TILE-2)), 2, 2);
+                    ctx.fillRect(px + (r4 * (TILE-2)), py + (r1 * (TILE-2)), 2, 2);
                 }
+                
             }
 
 

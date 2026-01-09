@@ -2820,15 +2820,23 @@ function genMap() {
     for(let y=0; y<MAP_S; y++) for(let x=0; x<MAP_S; x++) {
         let t = S.map[y*MAP_S+x];
         
-        // Skip map drawing here, just do spawns
         if([T.WATER, T.ROAD, T.BRIDGE, T.LOCK, T.BEDROCK, T.BLOCK].includes(t)) continue;
-        if(Math.abs(x - 25) < 3 && Math.abs(y - 35) < 3) continue;
-        // Skip Farm Area for spawns
-        if(x > 115 && y > 115) continue;
+        if(Math.abs(x - 25) < 3 && Math.abs(y - 35) < 3) continue; 
+        if(x > 115 && y > 115) continue; 
 
         if(solid(x, y, null)) continue; 
         
-        if(Math.random() < 0.1) addEnt('env', getEnv(t), x, y);
+        // --- CHECK: Is this tile inside a Big Mud or Volcano? ---
+        let insideFeature = S.ents.some(e => 
+            (e.kind === 'big_mud' || e.kind === 'lava_crater') && 
+            x >= e.x && x < e.x + e.w && 
+            y >= e.y && y < e.y + e.h
+        );
+
+        // Only spawn rocks/trees if NOT inside a big feature
+        if(!insideFeature && Math.random() < 0.1) {
+            addEnt('env', getEnv(t), x, y);
+        }
         
         if(Math.random() < 0.025) { 
             let distFromSpawn = Math.hypot(x - 25, y - 32); 
@@ -3214,9 +3222,32 @@ function update() {
     if(S.input.keys['arrowup']) dy=-1; if(S.input.keys['arrowdown']) dy=1;
     if(S.input.keys['arrowleft']) dx=-1; if(S.input.keys['arrowright']) dx=1;
     
+
+
+
+
+
+
+
+
     if(dx||dy) {
         let len = Math.hypot(dx,dy);
         let spd = p.buffs.speed > now ? p.spd*1.5 : p.spd; 
+
+        // --- NEW: MUD SLOWDOWN ---
+        // Check if player is standing inside a Mud Pool
+        let inMud = S.ents.some(e => 
+            e.kind === 'big_mud' && 
+            p.x >= e.x && p.x < e.x + e.w && 
+            p.y >= e.y && p.y < e.y + e.h
+        );
+        
+        if(inMud) {
+            spd *= 0.5; // 50% Speed (Slog through mud)
+            // Optional: You could add a 'squish' sound logic here later if you wanted
+        }
+        // -------------------------
+
         dx=(dx/len)*spd; dy=(dy/len)*spd;
         let tx = p.x + dx; let ty = p.y + dy;
         
@@ -3228,23 +3259,18 @@ function update() {
 
         if(dy<0) p.dir=0; if(dx>0) p.dir=1; if(dy>0) p.dir=2; if(dx<0) p.dir=3;
 
-
-
-// NEW ROBUST AUDIO TIMER
-        // 1. Initialize timer if missing
+        // NEW ROBUST AUDIO TIMER
         if(!p.stepTimer) p.stepTimer = 0;
-        
-        // 2. Count frames
         p.stepTimer++;
-        
-        // 3. Play sound every 20 frames (approx 0.3 seconds)
         if(p.stepTimer > 20) {
+            // Play squish sound if in mud, else normal step
+            // (If you don't have 'squish', it defaults to 'step')
             S.audio.play(S.p.isRiding ? 'horse' : 'step');
             p.stepTimer = 0;
         }
 
     } else {
-        S.p.stepTimer = 20; // Ready to play immediately on next move
+        S.p.stepTimer = 20; 
     }
 
 
@@ -3769,9 +3795,24 @@ function solid(x, y, excludeEnt=null) {
                 continue; 
             }
 
-            // 3. Standard Collision
+            // 3. ROOF FIX: HOUSE & TUCK SHOP
+            // The new art has a high roof. We start collision 1.5 tiles down 
+            // so you can walk behind the roof.
+            if (e.kind === 'House' || e.kind === 'TuckShop') {
+                if(x >= e.x && x < e.x+e.w && y >= e.y + 1.5 && y < e.y+e.h) return true;
+                continue;
+            }
+
+            // 4. STANDARD COLLISION (FarmHouse, Walls, etc.)
+            // Blocks the full tile area
             if(x >= e.x && x < e.x+e.w && y >= e.y && y < e.y+e.h) return true;
         }
+
+
+
+
+
+
         // CHANGE THIS LINE (Remove && e.name==='Tablet')
        // CORRECT: Check ALL objects, then check names inside
         else if(e.type==='obj') { 
@@ -3800,12 +3841,33 @@ function solid(x, y, excludeEnt=null) {
 // 1. ALLOW WALKING THROUGH MUD (Add this line)
             if(e.kind === 'big_mud') continue; 
 
+
+
             // 2. BLOCK VOLCANOES (Remove big_mud from here)
+           // 2. BLOCK VOLCANOES (Trapezoid / Conical Collision)
             if(e.kind === 'lava_crater') {
-                if(x >= e.x + 0.2 && x < e.x + e.w - 0.2 && 
-                   y >= e.y + 0.2 && y < e.y + e.h - 0.2) {
-                    return true;
+                // Vertical bounds (Bottom 62% is solid)
+                let colTop = e.y + (e.h * 0.38); 
+                let colBottom = e.y + e.h;
+
+                // 1. Check Vertical Range first
+                if (y >= colTop && y < colBottom) {
+                    
+                    // 2. Calculate Slope Progress (0.0 at Waist -> 1.0 at Base)
+                    let progress = (y - colTop) / (colBottom - colTop);
+
+                    // 3. Trapezoid Math
+                    // Shrink INWARD by 25% at the top, but only 5% at the bottom
+                    let shrinkFactor = 0.25 - (progress * 0.20); 
+                    let currentShrink = e.w * shrinkFactor;
+
+                    // 4. Horizontal Check
+                    if(x >= e.x + currentShrink && x < e.x + e.w - currentShrink) {
+                        return true;
+                    }
                 }
+                // IMPORTANT: This prevents falling through to the 1x1 fallback!
+                continue; 
             }
 
            
@@ -4205,65 +4267,76 @@ if(s.stomp) {
         return;
     }
 
-    if(s.quake) {
-        // 1. Generate Main Fissures (Screen Wide)
-        let cracks = [];
-        // Increase from 8 to 12 main cracks
-        for(let i=0; i<12; i++) {
-            let angle = (i/12) * 6.28; 
-            let path = [{x:0, y:0}]; 
-            
-            let dist = 0;
-            let cx = 0, cy = 0;
-            // FIX: Multiply by 45 to convert Tile Range to Pixels
-            // Range 12 * 45 = 540px radius (Huge)
-            let maxDist = s.range * 45; 
-            
-            while(dist < maxDist) {
-                // Longer segments for jagged look
-                let seg = 10 + Math.random() * 10;
-                dist += seg;
-                
-                // Add "Jitter" to angle
-                let jag = angle + (Math.random() - 0.5) * 0.8; 
-                
-                cx += Math.cos(jag) * seg;
-                cy += Math.sin(jag) * seg * 0.7; // Flatten Y
-                path.push({x:cx, y:cy});
+   
 
-                // Chance to add a "Branch" crack
-                if(Math.random() < 0.3) {
-                     cracks.push([
-                         {x:cx, y:cy},
-                         {x:cx + Math.cos(jag+0.5)*30, y:cy + Math.sin(jag+0.5)*30}
-                     ]);
+
+
+
+
+
+
+// --- 1. REDESIGNED QUAKE (Pre-calculated Paths) ---
+ // --- 1. EARTH SHATTER (Web Design, Fast, Custom Browns) ---
+    if(s.quake) {
+        let segments = [];
+        let debris = [];
+        let mainCount = 6; 
+
+        for(let i=0; i<mainCount; i++) {
+            let angle = (i / mainCount) * 6.28;
+            let dist = 0;
+            let maxDist = s.range * 45; 
+            let px = 0, py = 0; 
+            
+            let path = [{x:0, y:0}];
+
+            while(dist < maxDist) {
+                dist += 30; 
+                let jaggedAng = angle + (Math.random() - 0.5) * 1.0; 
+                px += Math.cos(jaggedAng) * 20;
+                py += Math.sin(jaggedAng) * 20;
+                path.push({x:px, y:py});
+
+                // Cross-Links (The Web)
+                if(i > 0 && Math.random() < 0.5) {
+                    let branchAng = jaggedAng + 1.57; 
+                    let bx = px + Math.cos(branchAng) * 25;
+                    let by = py + Math.sin(branchAng) * 25;
+                    segments.push({x1:px, y1:py, x2:bx, y2:by});
+                }
+
+                // Debris: Deep Bedrock Brown (Not Road Brown)
+                if(Math.random() < 0.4) {
+                    debris.push({
+                        x: px + (Math.random()-0.5)*20,
+                        y: py + (Math.random()-0.5)*20,
+                        size: 4 + Math.random() * 8,
+                        vx: Math.cos(jaggedAng) * (1 + Math.random()*2),
+                        vy: Math.sin(jaggedAng) * (1 + Math.random()*2),
+                        rot: Math.random() * 6.28,
+                        color: '#3e2723' // Deep dark brown
+                    });
                 }
             }
-            cracks.push(path);
+            
+            for(let k=0; k<path.length-1; k++) {
+                segments.push({x1:path[k].x, y1:path[k].y, x2:path[k+1].x, y2:path[k+1].y});
+            }
         }
 
         S.vfxs.push({
             type: 'tectonic_rupture', 
-            x: p.x, 
-            y: p.y, 
-            life: 80,         // 1.3 Seconds
-            maxLife: 80,
-            cracks: cracks
+            x: p.x, y: p.y, 
+            life: 70, maxLife: 70, // Fast Snap
+            web: segments,       
+            debris: debris  
         });
 
-        // 3. Magma Eruption Particles
-        for(let i=0; i<40; i++) {
-            let ang = Math.random() * 6.28;
-            let d = Math.random() * 20;
-            part(p.x + Math.cos(ang)*d, p.y + Math.sin(ang)*d, '#ff5722', 1, 4, 'rock');
-            S.parts[S.parts.length-1].vy = -3 - Math.random()*3; // Fly High UP
-        }
-
-        // 4. Hit Logic
+        S.shake = 15; 
+        
         S.ents.forEach(m => {
-            let mx = m.x + (m.w||1)/2, my = m.y + (m.h||1)/2;
-            if(m.type==='mob' && !m.dead && Math.hypot(mx-p.x, my-p.y) < s.range) {
-                hit(m, s.dmg, s);
+            if(m.type==='mob' && !m.dead && Math.hypot((m.x+m.w/2)-p.x, (m.y+m.h/2)-p.y) < s.range) {
+                hit(m, s.dmg, { knock: 1.5, stun: 3000 });
             }
         });
         return; 
@@ -4271,85 +4344,85 @@ if(s.stomp) {
 
 
 
-
-
-
-if(s.spike) {
-        // 1. Determine Player Facing Angle
+    // --- 2. FREEZE: GIANT RUGGED ICE BOULDERS ---
+  // --- 2. FREEZE: MAGE 'X' (INSTANT SPAWN) ---
+    // Internal Name: 'glacial_cone'
+    if(s.spike) {
         let faceAng = 0;
-        if(p.dir===0) faceAng = -Math.PI/2; 
-        else if(p.dir===1) faceAng = 0;     
-        else if(p.dir===2) faceAng = Math.PI/2; 
-        else faceAng = Math.PI;             
+        if(p.dir===0) faceAng = -1.57; else if(p.dir===1) faceAng = 0;     
+        else if(p.dir===2) faceAng = 1.57; else faceAng = 3.14;             
 
-        let coneWidth = 0.7; 
-
-        // OPTIMIZATION: Reduce rows from 6 to 5 (Saves ~15 spikes)
-        let rows = 5; 
+        let boulders = [];
+        let count = 15; 
         
-        for(let r=1; r<=rows; r++) {
-            let distRatio = r / rows; 
-            let currentDist = distRatio * s.range;
+        let maxRange = s.range * 60; 
+
+        for(let i=0; i<count; i++) {
+            let progress = i / count; 
+            let dist = 20 + (progress * maxRange) + (Math.random() * 30);
             
-            // OPTIMIZATION: Increase delay spread so calculations don't happen all at once
-            let waveDelay = (r-1) * 70; 
+            let spread = (Math.random() - 0.5) * 0.8; 
+            
+            let bx = Math.cos(faceAng + spread) * dist;
+            let by = Math.sin(faceAng + spread) * dist;
 
-            let size = 0.7 + (distRatio * 1.8);
-
-            // OPTIMIZATION: Cap max spikes per row to 6
-            let rawCount = 2 + Math.ceil(r * 1.2);
-            let spikeCount = rawCount > 6 ? 6 : rawCount;
-
-            for(let i=0; i<spikeCount; i++) {
-                setTimeout(() => {
-                    let arcPos = (spikeCount === 1) ? 0 : (i / (spikeCount-1)) - 0.5;
-                    let angle = faceAng + (arcPos * coneWidth * 2) + (Math.random()*0.15 - 0.075);
-                    
-                    let sx = p.x + Math.cos(angle) * currentDist;
-                    let sy = p.y + Math.sin(angle) * currentDist;
-
-                    S.vfxs.push({
-                        type: 'glacial_spike',
-                        x: sx,
-                        y: sy,
-                        life: 80,       
-                        maxLife: 80,
-                        scale: size     
-                    });
-                    
-                    // OPTIMIZATION: Only spawn mist 30% of the time (Massive FPS Boost)
-                    if(Math.random() < 0.3) {
-                        part(sx, sy, '#e0f7fa', 1, 3 + size*2, 'cloud');
-                    }
-
-                }, waveDelay + Math.random()*20); 
+            let radius = 40 + Math.random() * 45; 
+            
+            let pts = [];
+            let verts = 6 + Math.floor(Math.random() * 3); 
+            for(let j=0; j<verts; j++) {
+                let ang = (j / verts) * 6.28;
+                let r = radius * (0.6 + Math.random() * 0.6); 
+                pts.push({ x: Math.cos(ang)*r, y: Math.sin(ang)*r });
             }
-        }
 
-        // 3. Hit Logic (Remains Instant)
+            let fractures = [];
+            for(let k=0; k<5; k++) { 
+                let p1 = pts[Math.floor(Math.random()*pts.length)];
+                let p2 = pts[Math.floor(Math.random()*pts.length)];
+                fractures.push({x1:p1.x, y1:p1.y, x2:p2.x*0.4, y2:p2.y*0.4});
+            }
+
+            boulders.push({
+                x: bx, y: by,
+                pts: pts,
+                fractures: fractures,
+                // INSTANT RIPPLE: Lower number = Faster wave
+                delay: (dist / maxRange) * 0.05, 
+                sortY: by
+            });
+        }
+        boulders.sort((a,b) => a.sortY - b.sortY);
+
+        S.vfxs.push({
+            type: 'glacial_cone',
+            x: p.x, y: p.y,
+            life: 160, maxLife: 160, 
+            boulders: boulders
+        });
+
+        S.shake = 5; 
+
         S.ents.forEach(m => {
             if(m.type !== 'mob' || m.dead) return;
-            
             let dx = (m.x + m.w/2) - p.x;
             let dy = (m.y + m.h/2) - p.y;
             let dist = Math.hypot(dx, dy);
             let mobAng = Math.atan2(dy, dx);
-            
             let diff = mobAng - faceAng;
-            while(diff < -Math.PI) diff += Math.PI*2;
-            while(diff > Math.PI) diff -= Math.PI*2;
+            while(diff < -3.14159) diff += 6.28318;
+            while(diff > 3.14159) diff -= 6.28318;
 
-            if(dist < s.range && Math.abs(diff) < coneWidth + 0.2) { 
-                m.status.freeze = Date.now() + s.freeze;
-                hit(m, s.dmg, { knock: 4.0 }); 
-                
-                // Only spawn 3 shards on hit instead of 10
-                part(m.x, m.y, '#00e5ff', 3, 4);
-                popText(m.x, m.y, "FROZEN", "#00e5ff", true, true);
+            if(dist < s.range * 1.8 && Math.abs(diff) < 1.0) { 
+                hit(m, s.dmg, { freeze: 2500, knock: 1.5 });
             }
         });
         return;
     }
+
+
+
+
 
 
 
@@ -5012,29 +5085,7 @@ function eggTitle() {
 
 
         
-        if(t===T.BLOCK && S.wordData[y*MAP_S+x]) {
-             let e = S.wordData[y*MAP_S+x];
-             let cTop='#eee', cSide='#bbb', cTxt='#111';
-             if(e.theme === 'blue') { cTop='#2980b9'; cSide='#1a5276'; cTxt='#fff'; }
-             if(e.theme === 'red') { cTop='#c0392b'; cSide='#922b21'; cTxt='#fff'; }
-             if(e.theme === 'gold') { cTop='#f1c40f'; cSide='#b7950b'; cTxt='#000'; }
-             if(e.theme === 'purple') { cTop='#8e44ad'; cSide='#6c3483'; cTxt='#fff'; }
-             if(e.theme === 'green') { cTop='#27ae60'; cSide='#1e8449'; cTxt='#fff'; }
-             
-             ctx.fillStyle = cTop; 
-             ctx.fillRect(px, py, 50, 50); 
-             ctx.strokeStyle = cSide; ctx.lineWidth = 4;
-             ctx.strokeRect(px+2, py+2, 46, 46);
-
-             ctx.font = 'bold 30px monospace'; 
-             ctx.fillStyle = cTxt; ctx.textAlign='center'; 
-             ctx.fillText(e.char, px+25, py+35);
-
-
-
-
-             ctx.textAlign='left';
-        }
+        
         
             }
 
@@ -5138,15 +5189,12 @@ function eggTitle() {
 
 // --- START OF TECTONIC RUPTURE (FLOOR LAYER) ---
 // --- START OF TECTONIC RUPTURE (FLOOR LAYER) ---
+   // --- SPECIAL FLOOR VFX LOOP (Draws BEFORE Player) ---
     S.vfxs.forEach(v => {
-        
-        // ============================================
-        // 1. NEW: DARK VOID RIPPLE (Under Player)
-        // ============================================
-      // ============================================
-        // 1. ADVANCED VOID FLUID (Floor Layer)
-        // ============================================
-        if(v.type === 'void_ripple') {
+
+
+
+ if(v.type === 'void_ripple') {
             let x = Math.floor(v.x*TILE - S.cam.x + sx);
             let y = Math.floor(v.y*TILE - S.cam.y + sy);
             
@@ -5235,75 +5283,70 @@ function eggTitle() {
             ctx.shadowBlur = 0;
             return; // Done drawing this VFX
         }
-        // ============================================
 
 
-        // Only draw the cracks here... (Existing Tectonic logic follows)
-        if(v.type !== 'tectonic_rupture') return;
 
-        let x = Math.floor(v.x*TILE - S.cam.x + sx), y = Math.floor(v.y*TILE - S.cam.y + sy);
-        
-        // We decrement life here because we are handling this specific VFX early
-        v.life--; 
-        if(v.life <= 0) v.dead = true;
 
-        let prog = 1 - (v.life / v.maxLife);
-        let cx = x + 25; 
-        let cy = y + 40; // Center at feet
 
-        // Color Logic: White -> Lava Red -> Dark Rock
-        let color, glow, width;
-        if(prog < 0.2) {
-             color = '#ffffff'; glow = '#ffffff'; width = 8; 
-        } else if(prog < 0.7) {
-             color = '#d50000'; glow = '#ff3d00'; width = 6; 
-        } else {
-             color = '#3e2723'; glow = null; width = 4; 
-        }
 
-        ctx.save();
-        ctx.translate(cx, cy);
+        // --- VISUAL: TECTONIC RUPTURE (Brown Crust + Black Core) ---
+        if(v.type === 'tectonic_rupture') {
+            ctx.shadowBlur = 0; 
+            let cx = Math.floor(v.x*TILE - S.cam.x + sx) + 25;
+            let cy = Math.floor(v.y*TILE - S.cam.y + sy) + 40;
+            let prog = 1 - (v.life / v.maxLife);
+            
+            // Animation: Snaps open fast
+            let openAmt;
+            if(prog < 0.15) openAmt = prog * 6.6; 
+            else if(prog > 0.85) openAmt = (1 - prog) * 6.6; 
+            else openAmt = 1.0; 
 
-        v.cracks.forEach(path => {
+            ctx.save();
+            ctx.translate(cx, cy);
+            
+            ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+            // 1. OUTER CRUST (Deep Bedrock Brown)
+            // This is wider than the black hole, creating the "Brown Edge" you wanted
+            ctx.strokeStyle = '#3e2723'; // <--- Distinct Dark Brown
+            ctx.lineWidth = 16 * openAmt; 
+            
             ctx.beginPath();
-            ctx.moveTo(path[0].x, path[0].y);
-            
-            // Expand the crack outward over time
-            let visibleLen = Math.floor(path.length * (prog * 5)); 
-            if(visibleLen > path.length) visibleLen = path.length;
-
-            for(let i=1; i<visibleLen; i++) {
-                ctx.lineTo(path[i].x, path[i].y);
+            if(v.web) {
+                v.web.forEach(seg => {
+                    ctx.moveTo(seg.x1, seg.y1);
+                    ctx.lineTo(seg.x2, seg.y2);
+                });
             }
-            
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            // 1. Outer Glow (Lava lighting)
-            if(glow) {
-                ctx.shadowBlur = 15;
-                ctx.shadowColor = glow;
-                ctx.strokeStyle = glow;
-                ctx.lineWidth = width + 4;
-                ctx.globalAlpha = 0.6;
-                ctx.stroke();
-                ctx.globalAlpha = 1.0;
-            }
-
-            // 2. Main Crack Body
-            ctx.strokeStyle = color;
-            ctx.lineWidth = width;
-            ctx.shadowBlur = 0;
             ctx.stroke();
 
-            // 3. Inner Heat Streak (Bright Yellow Center)
-            if(prog > 0.1 && prog < 0.6) {
-                ctx.strokeStyle = '#ffff00';
-                ctx.lineWidth = 2;
-                ctx.stroke();
+            // 2. INNER ABYSS (The Black Hole inside the Brown)
+            // Drawn narrower so the brown shows on the edges
+            if (openAmt > 0.1) {
+                ctx.strokeStyle = '#000000'; // Pure Black
+                ctx.lineWidth = 8 * openAmt;
+                ctx.stroke(); 
             }
-        });
-        ctx.restore();
+
+            // 3. FLYING DEBRIS (Matching Brown)
+            if(v.debris) {
+                v.debris.forEach((d, i) => {
+                    let flyProg = prog; 
+                    if(flyProg > 0.9) return; 
+
+                    let height = Math.sin(flyProg * 3.14) * 30; 
+                    
+                    ctx.save();
+                    ctx.translate(d.x + (d.vx * flyProg * 30), d.y + (d.vy * flyProg * 30) - height);
+                    ctx.rotate(d.rot + (flyProg * 5));
+                    ctx.fillStyle = d.color;
+                    ctx.fillRect(-d.size/2, -d.size/2, d.size, d.size);
+                    ctx.restore();
+                });
+            }
+            ctx.restore();
+        }
     });
     // --- END OF TECTONIC RUPTURE ---
 
@@ -5436,9 +5479,57 @@ if(p.type==='bubble') {
         ctx.globalAlpha = 1;
         if(p.life<=0) p.dead = true;
     });
-   S.parts = S.parts.filter(p => !p.dead);
+  
+ S.parts = S.parts.filter(p => !p.dead);
     // MANDATORY FIX: Cap particles to prevent crash
     if(S.parts.length > 500) S.parts.splice(0, 50);
+
+
+
+
+// ============================================================
+    // LAYER 2.5: LETTER TILES (The "Cheese")
+    // Drawn AFTER Quake/VFX, but BEFORE Player/Trees
+    // ============================================================
+    for(let y=cy; y<ey; y++) for(let x=cx; x<ex; x++) {
+        if(x<0||y<0||x>=MAP_S||y>=MAP_S) continue;
+        let t = S.map[y*MAP_S+x];
+        
+        // Recalculate position for this layer
+        let px = Math.floor(x*TILE-S.cam.x+sx);
+        let py = Math.floor(y*TILE-S.cam.y+sy);
+
+        if(t===T.BLOCK && S.wordData[y*MAP_S+x]) {
+             let e = S.wordData[y*MAP_S+x];
+             let cTop='#eee', cSide='#bbb', cTxt='#111';
+             
+             if(e.theme === 'blue') { cTop='#2980b9'; cSide='#1a5276'; cTxt='#fff'; }
+             if(e.theme === 'red') { cTop='#c0392b'; cSide='#922b21'; cTxt='#fff'; }
+             if(e.theme === 'gold') { cTop='#f1c40f'; cSide='#b7950b'; cTxt='#000'; }
+             if(e.theme === 'purple') { cTop='#8e44ad'; cSide='#6c3483'; cTxt='#fff'; }
+             if(e.theme === 'green') { cTop='#27ae60'; cSide='#1e8449'; cTxt='#fff'; }
+             
+             ctx.fillStyle = cTop; 
+             ctx.fillRect(px, py, 50, 50); 
+             ctx.strokeStyle = cSide; ctx.lineWidth = 4;
+             ctx.strokeRect(px+2, py+2, 46, 46);
+
+             ctx.font = 'bold 30px monospace'; 
+             ctx.fillStyle = cTxt; ctx.textAlign='center'; 
+             ctx.fillText(e.char, px+25, py+35);
+             ctx.textAlign='left';
+        }
+    }
+    // ============================================================
+
+
+
+
+
+
+
+
+
 
     // ============================================================
     // STEP 2: DEFINE THE LIST (Filter out the Mud!)
@@ -5462,32 +5553,26 @@ if(p.type==='bubble') {
     let isInside = house && xIn(house, S.p.x, S.p.y);
 
     // --- SORTING LOGIC (Depth Buffer) ---
-    // Decides what draws in front of what
-    // --- SORTING LOGIC (Depth Buffer) ---
-    // --- SORTING LOGIC (Depth Buffer) ---
-    // --- SORTING LOGIC (Depth Buffer) ---
-    // --- SORTING LOGIC (Depth Buffer) ---
-    // --- SORTING LOGIC (Depth Buffer) ---
-    // --- SORTING LOGIC (Depth Buffer - FIXED) ---
-   // --- SORTING LOGIC (Depth Buffer - TITAN FIX) ---
+    // --- SORTING LOGIC ---
     list.sort((a,b) => {
         let getDepth = (e) => {
+            // 1. FORCE BOTTOM LAYER
+            if (e.kind === 'big_mud') return -999999; 
+            if (e.type === 'void_aura') return -999998; // <--- ADD THIS LINE (Right above mud)
+
+            // 2. FORCE TOP LAYER
             if (e.type === 'shadow_hand') return 999999; 
             if (e.type === 'tornado') return 500000; 
-            if (e.kind === 'big_mud') return -999999; 
+            
+            // ... rest of logic ...
             if (e.kind === 'FarmHouse') return isInside ? -10000 : (e.y + e.h);
-
-            // PLAYER: Base Depth
             if (e.type === 'p') return e.y + 1.2;
-
+            
+            // ... (keep existing boss/env logic) ...
             if (e.type === 'mob' && e.boss) {
-                // TITAN FIX: Pushes the Titan deep into the background (-3.5).
-                // You will stand IN FRONT of him unless you walk above his head.
-                if(e.name === 'Chaos Titan') return e.y + e.h - 3.5;
-                
-                return e.y + e.h - 1.2;
+                 if(e.name === 'Chaos Titan') return e.y + e.h - 3.5;
+                 return e.y + e.h - 1.2;
             }
-
             if (e.type === 'env') {
                 if (e.kind === 'lava_crater') return e.y + e.h - 0.2;
                 return e.y + 0.85; 
@@ -6139,85 +6224,99 @@ else if(e.type === 'shadow_hand') {
 
 
 S.vfxs.forEach((v, i) => {
-        // --- ADD THIS LINE ---
-        if(v.type === 'tectonic_rupture') return; // SKIP! We already drew it on the floor.
-        // ---------------------
+        // (No skip lines here)
 
         let x = Math.floor(v.x*TILE - S.cam.x + sx), y = Math.floor(v.y*TILE - S.cam.y + sy);
         v.life--;
         
         ctx.shadowBlur=15; ctx.shadowColor='#fff';
+        
+        // ... (Then your optimized drawing blocks follow below) ...
         // ... rest of the existing code ...
 
 
 
 
-if(v.type === 'tectonic_rupture') {
-            let cx = x + 25; // Player Center
-            let cy = y + 40; 
 
+
+
+
+
+
+
+
+
+        // --- 2. VISUAL: FREEZE (Transparent Ice) ---
+   // --- VISUAL: FREEZE (Instant Snap Animation) ---
+        if(v.type === 'glacial_cone') {
+            ctx.shadowBlur = 0;
+            let cx = x + 25; 
+            let cy = y + 40;
             let prog = 1 - (v.life / v.maxLife);
             
-            // --- OPTIMIZATION: BATCH DRAWING ---
-            // Instead of looping through cracks 3 times, we build the path ONCE
-            // and stroke it 3 times with different styles. This is 10x faster.
-            
+            let alpha = v.life < 40 ? v.life/40 : 1.0; 
+
             ctx.save();
             ctx.translate(cx, cy);
-            
-            // 1. BUILD THE PATH (All cracks in one go)
-            ctx.beginPath();
-            v.cracks.forEach(path => {
-                ctx.moveTo(path[0].x, path[0].y);
-                
-                // Expand outward
-                let visibleLength = Math.floor(path.length * (prog * 3)); 
-                if(visibleLength > path.length) visibleLength = path.length;
+            ctx.globalAlpha = alpha;
 
-                for(let i=1; i<visibleLength; i++) {
-                    ctx.lineTo(path[i].x, path[i].y);
-                }
+            v.boulders.forEach(b => {
+                // INSTANT POP-UP: Speed increased to 12
+                // This makes them smash up from the ground immediately
+                let myProg = (prog - b.delay) * 12; 
+                
+                if(myProg < 0) return;
+                if(myProg > 1) myProg = 1;
+                
+                let scale = myProg;
+                // Faster bounce recovery
+                if(myProg > 0.8) scale = 1.0 + Math.sin((myProg-0.8)*15) * 0.1;
+
+                ctx.save();
+                ctx.translate(b.x, b.y);
+                ctx.scale(scale, scale);
+
+                // 1. BASE SHADOW
+                ctx.fillStyle = 'rgba(0, 60, 100, 0.15)';
+                ctx.beginPath();
+                ctx.moveTo(b.pts[0].x, b.pts[0].y + 15); 
+                for(let i=1; i<b.pts.length; i++) ctx.lineTo(b.pts[i].x, b.pts[i].y + 15);
+                ctx.fill();
+
+                // 2. MAIN BODY
+                let grad = ctx.createLinearGradient(-30, -60, 30, 60); 
+                grad.addColorStop(0, 'rgba(255, 255, 255, 0.95)');   
+                grad.addColorStop(0.3, 'rgba(200, 240, 255, 0.55)'); 
+                grad.addColorStop(0.6, 'rgba(129, 212, 250, 0.45)'); 
+                grad.addColorStop(1, 'rgba(2, 119, 189, 0.6)');      
+                
+                ctx.fillStyle = grad;
+                ctx.beginPath();
+                ctx.moveTo(b.pts[0].x, b.pts[0].y);
+                for(let i=1; i<b.pts.length; i++) ctx.lineTo(b.pts[i].x, b.pts[i].y);
+                ctx.closePath();
+                ctx.fill();
+
+                // 3. OUTLINE
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 4. FRACTURES
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; 
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                b.fractures.forEach(f => {
+                    ctx.moveTo(f.x1, f.y1);
+                    ctx.lineTo(f.x2, f.y2);
+                });
+                ctx.stroke();
+
+                ctx.restore();
             });
 
-            // 2. STYLE: ROUND LIQUID LOOK
-            ctx.lineCap = 'round';
-            ctx.lineJoin = 'round';
-
-            // --- LAYER 1: THE "FAKE GLOW" (Atmosphere) ---
-            // A wide, transparent stroke. Costs almost nothing to draw.
-            if(prog < 0.6) {
-                ctx.strokeStyle = 'rgba(255, 87, 34, 0.3)'; // Deep Orange Haze
-                ctx.lineWidth = 18; // Very Wide
-                ctx.stroke();
-            }
-
-            // --- LAYER 2: THE MAGMA (Body) ---
-            // White -> Red -> Dark Rock
-            let color;
-            if(prog < 0.2) color = '#ffffff';      // Flash
-            else if(prog < 0.6) color = '#d50000'; // Lava Red
-            else color = '#3e2723';                // Cooling Rock
-            
-            ctx.strokeStyle = color;
-            ctx.lineWidth = (prog < 0.6) ? 6 : 4;
-            ctx.stroke();
-
-            // --- LAYER 3: THE CORE (Intensity) ---
-            // A thin bright line in the center. Makes it look "hot".
-            if(prog > 0.1 && prog < 0.5) {
-                ctx.strokeStyle = '#ffff00'; // Bright Yellow
-                ctx.lineWidth = 2;
-                ctx.stroke();
-            }
-            
             ctx.restore();
         }
-
-
-
-
-
-
 
 
 
@@ -6390,50 +6489,6 @@ if(v.type === 'tectonic_rupture') {
 
 
 
-if(v.type === 'glacial_spike') {
-            let cx = x + 25;
-            let cy = y + 40;
-
-            let prog = 1 - (v.life / v.maxLife);
-            let growth = prog < 0.2 ? (prog / 0.2) : 1.0; 
-            let alpha = prog > 0.8 ? (1 - (prog-0.8)/0.2) : 1.0;
-
-            ctx.save();
-            ctx.translate(cx, cy);
-            ctx.scale(v.scale * growth, v.scale * growth); 
-            ctx.globalAlpha = alpha;
-
-            // --- OPTIMIZATION: FAKE GLOW ---
-            // Draw a soft cyan circle behind the spike. 
-            // This is 100x faster than shadowBlur and looks like "cold mist".
-            ctx.fillStyle = 'rgba(0, 229, 255, 0.3)'; 
-            ctx.beginPath(); 
-            ctx.arc(0, -25, 30, 0, 6.28); 
-            ctx.fill();
-
-            // ELSA COLORS (Brighter Cyan/White)
-            let cDark = '#00bcd4';   // Cyan Dark
-            let cMid = '#4dd0e1';    // Cyan Mid
-            let cLight = '#e0f7fa';  // Ice White
-            
-            // Spike Body (Main Triangle)
-            ctx.beginPath();
-            ctx.fillStyle = cDark; ctx.moveTo(-10, 0); ctx.lineTo(0, -50); ctx.lineTo(10, 0); ctx.fill();
-            ctx.fillStyle = cMid;  ctx.moveTo(0, 0);   ctx.lineTo(0, -50); ctx.lineTo(10, 0); ctx.fill();
-            ctx.fillStyle = cLight; ctx.moveTo(-5, -10); ctx.lineTo(0, -50); ctx.lineTo(0, -10); ctx.fill();
-
-            // Side Spikes
-            ctx.fillStyle = cMid;
-            ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-18, -15); ctx.lineTo(-6, 0); ctx.fill();
-            ctx.beginPath(); ctx.moveTo(8, 0);   ctx.lineTo(14, -20);  ctx.lineTo(4, 0);  ctx.fill();
-
-            // Inner White Core (The "Shiny" reflection)
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(-2, -45, 4, 10);
-
-            ctx.restore();
-            ctx.globalAlpha = 1.0;
-        }
 
 
 
@@ -8250,102 +8305,90 @@ function drawNPC(x, y, n) {
 	let skinColor = '#f5cba7';
 
 
- // --- [FIX] CUSTOM COLORS FOR JINGLE & MARY ---
-    if (n.name === "Jingle") {
-        clothColor = '#ff5252'; // Bright Red (Singapore Style)
-        hairColor = '#212121';  // Dark Black Hair
-    }
-    else if (n.name === "Mary") {
-        clothColor = '#ab47bc'; // Soft Purple
-        hairColor = '#ffd54f';  // Golden Blonde
-    }
-    // ---------------------------------------------
-
+ 
 
 
 
 
 if(n.name === "Shummi") {
-        // 1. LEGS (Classic Chinos - Static)
+        // 1. LEGS (Short 5px)
         ctx.fillStyle = '#c5a585'; 
-        ctx.fillRect(-3.5, 5, 3, 9); // Left Leg
-        ctx.fillRect(0.5, 5, 3, 9);  // Right Leg
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);  
 
-        // Rolled Cuffs
+        // Cuffs
         ctx.fillStyle = '#d7ccc8'; 
-        ctx.fillRect(-3.5, 13, 3, 1);
-        ctx.fillRect(0.5, 13, 3, 1);
+        ctx.fillRect(-3.5, 10, 3, 1);
+        ctx.fillRect(0.5, 10, 3, 1);
 
-        // 2. SHOES (White Sneakers)
+        // 2. SHOES
         ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-3.5, 14, 3, 1.5);
-        ctx.fillRect(0.5, 14, 3, 1.5);
+        ctx.fillRect(-3.5, 11, 3, 1.5);
+        ctx.fillRect(0.5, 11, 3, 1.5);
 
-        // 3. TORSO (White & Navy Striped Top)
+        // 3. TORSO
         ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-4, -1, 8, 7);
+        ctx.fillRect(-4.5, -2, 9, 8); 
 
-        // Navy Stripes
+        // Stripes
         ctx.fillStyle = '#1a237e'; 
-        ctx.fillRect(-4, 0, 8, 1);
-        ctx.fillRect(-4, 2, 8, 1);
-        ctx.fillRect(-4, 4, 8, 1);
+        ctx.fillRect(-4.5, -1, 9, 1);
+        ctx.fillRect(-4.5, 1, 9, 1);
+        ctx.fillRect(-4.5, 3, 9, 1);
 
-        // Brown Leather Belt
+        // Belt
         ctx.fillStyle = '#5d4037';
-        ctx.fillRect(-4, 5, 8, 1);
-        // Gold Buckle
-        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-4.5, 5, 9, 1);
+        ctx.fillStyle = '#ffd700'; 
         ctx.fillRect(-1, 5, 2, 1);
 
-        // 4. ARMS (Static by sides)
-        // Sleeves
+        // 4. ARMS (Ultra-Thin: 1.5px)
         ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-6, -1, 2, 3); 
-        ctx.fillRect(4, -1, 2, 3);
+        ctx.fillRect(-6, -1, 1.5, 3); 
+        ctx.fillRect(4.5, -1, 1.5, 3);
         
-        // Sleeve Stripes
         ctx.fillStyle = '#1a237e';
-        ctx.fillRect(-6, 0, 2, 1); ctx.fillRect(4, 0, 2, 1);
-        ctx.fillRect(-6, 2, 2, 1); ctx.fillRect(4, 2, 2, 1);
+        ctx.fillRect(-6, 0, 1.5, 1);   ctx.fillRect(4.5, 0, 1.5, 1);
+        ctx.fillRect(-6, 2, 1.5, 1);   ctx.fillRect(4.5, 2, 1.5, 1);
         
-        // Skin Arms
         ctx.fillStyle = '#f5cba7'; 
-        ctx.fillRect(-6, 2, 2, 4); 
-        ctx.fillRect(4, 2, 2, 4);
+        ctx.fillRect(-6, 2, 1.5, 3);   // Hands
+        ctx.fillRect(4.5, 2, 1.5, 3);
 
-        // 5. HEAD & FACE
+        // 5. HEAD
         ctx.fillStyle = '#f5cba7'; 
         ctx.fillRect(-3, -7, 6, 6);
 
-        ctx.fillStyle = '#000'; // Eyes
-        ctx.fillRect(-2, -5, 1, 1); 
-        ctx.fillRect(1, -5, 1, 1);
-        
-        ctx.fillStyle = '#bf360c'; // Smile
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+        ctx.fillStyle = '#bf360c'; 
         ctx.fillRect(-1, -3, 2, 1);
 
-        // 6. HAIR (Solid Shape - No Holes)
-        ctx.fillStyle = '#212121'; // Black
-        
+        // 6. HAIR (Refined: Tip Raised 0.5px)
+        ctx.fillStyle = '#212121'; 
         ctx.beginPath();
-        // Start Left Sideburn
-        ctx.moveTo(-5, -4);
-        // Up Left Side
-        ctx.lineTo(-5, -8);
-        // Curve over Top
-        ctx.quadraticCurveTo(-5, -12, 0, -12); 
-        ctx.quadraticCurveTo(5, -12, 5, -8);
-        // Down Right Side
-        ctx.lineTo(5, -4);
-        // Right Ear Cutout
-        ctx.lineTo(3.5, -4);
-        ctx.lineTo(3.5, -8);
-        // Bangs (Solid)
-        ctx.lineTo(2, -6);  
-        ctx.lineTo(-1, -6); 
-        ctx.lineTo(-3.5, -8); 
-        ctx.lineTo(-3.5, -4); 
+        
+        // Left Sideburn
+        ctx.moveTo(-4, -2.2);
+        ctx.lineTo(-4, -8.2);
+        
+        // Top Dome
+        ctx.quadraticCurveTo(0, -11.2, 4, -8.2);
+        
+        // Right Sideburn
+        ctx.lineTo(4, -2.2);
+        ctx.lineTo(3, -2.2);
+        ctx.lineTo(3, -7.2);
+
+        // Bangs
+        ctx.lineTo(0, -6.2);   
+        
+        // [FIXED] Tip raised by 0.5px (from -4.2 to -4.7)
+        // This makes the bang shorter over the left eye
+        ctx.lineTo(-2, -5.2);  
+        
+        ctx.lineTo(-4, -6.2);  // Connect to Left Side
+        
         ctx.fill();
     }
 
@@ -8476,424 +8519,662 @@ if(n.name === "Shummi") {
 
 
 
+/// --- JINGLE (Refined: Coat Outlines + #6e3e0b Hair) ---
+    else if(n.name === "Jingle") {
+        // 1. LEGS (Straight-Leg Blue Jeans - Separated)
+        ctx.fillStyle = '#1e88e5'; 
+        ctx.fillRect(-3.5, 6, 3, 5); // Left Leg
+        ctx.fillRect(0.5, 6, 3, 5);  // Right Leg
 
+        // Shoes (White Sneakers)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
 
+        // 2. INNER TOP (Black - Visible in center)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-2, -2, 4, 8); 
 
-
-
-
-
-// --- SIMON (The Chunky Chef) ---
-    else if(n.name === "Simon") {
-        // 1. LEGS (Checkered Chef Pants)
-        ctx.fillStyle = '#263238'; // Dark Grey Base
-        ctx.fillRect(-4.5, 6, 4, 8); // Left Leg (Wider)
-        ctx.fillRect(0.5, 6, 4, 8);  // Right Leg (Wider)
+        // 3. COAT (Camel/Beige - Open Front)
+        ctx.fillStyle = '#d7ccc8'; // Camel
         
-        // Checkered Pattern (Simple dots)
-        ctx.fillStyle = '#cfd8dc'; 
-        ctx.fillRect(-3.5, 7, 1, 1); ctx.fillRect(-3.5, 9, 1, 1); ctx.fillRect(-3.5, 11, 1, 1);
-        ctx.fillRect(1.5, 7, 1, 1);  ctx.fillRect(1.5, 9, 1, 1);  ctx.fillRect(1.5, 11, 1, 1);
+        // Outline Style (Darker Camel)
+        ctx.strokeStyle = '#8d6e63'; ctx.lineWidth = 0.5;
+        
+        // Left Panel
+        ctx.fillRect(-5, -2, 3, 10); 
+        ctx.strokeRect(-5, -2, 3, 10); // Outline
+        
+        // Right Panel
+        ctx.fillRect(2, -2, 3, 10);  
+        ctx.strokeRect(2, -2, 3, 10);  // Outline
 
-        // 2. BODY (Double-Breasted Jacket)
-        ctx.fillStyle = '#ffffff'; 
-        // Wide Torso
+        // Lapels (Shadow detail)
+        ctx.fillStyle = '#bcaaa4'; 
+        ctx.fillRect(-2, -2, 1, 4);
+        ctx.fillRect(1, -2, 1, 4);
+
+        // 4. ARMS (Coat Sleeves - 1.5px Width)
+        ctx.fillStyle = '#d7ccc8'; // Matches Coat
+        
+        // Left Sleeve (x=-6.5 extends to -5, touches coat)
+        ctx.fillRect(-6.5, -1, 1.5, 4); 
+        ctx.strokeRect(-6.5, -1, 1.5, 4); // Outline
+        
+        // Right Sleeve (x=5 touches coat at 5)
+        ctx.fillRect(5, -1, 1.5, 4);
+        ctx.strokeRect(5, -1, 1.5, 4); // Outline
+
+        // Hands (Skin)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 3, 1.5, 2); 
+        ctx.fillRect(5, 3, 1.5, 2);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 6. HAIR (Warm Brown #6e3e0b)
+        ctx.fillStyle = '#6e3e0b'; 
         ctx.beginPath();
-        ctx.moveTo(-6, -2); ctx.lineTo(6, -2); // Shoulders
-        ctx.lineTo(7, 8);   ctx.lineTo(-7, 8); // Hips (Chunky)
+        ctx.moveTo(-4, -9);
+        ctx.lineTo(4, -9);
+        ctx.lineTo(5, -6); // Volume
+        ctx.lineTo(5, -2); // Length
+        ctx.lineTo(3, -2);
+        ctx.lineTo(3, -7); // Frame face
+        ctx.lineTo(-3, -7);
+        ctx.lineTo(-3, -2);
+        ctx.lineTo(-5, -2);
+        ctx.lineTo(-5, -6);
+        ctx.fill();
+        
+        // Top Volume
+        ctx.fillRect(-4, -9, 8, 2);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+
+
+
+// --- MARY (Green Sporty - Shummi/Cute Proportions) ---
+    else if(n.name === "Mary") {
+        // 1. LEGS (Short 5px height - Matching Shummi)
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
+
+        // 2. SHORTS (Dark Green - Fitted to short legs)
+        ctx.fillStyle = '#2e7d32'; // Dark Green
+        ctx.fillRect(-3.5, 6, 3.5, 3); 
+        ctx.fillRect(0, 6, 3.5, 3);
+        
+        // White Side Stripes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-3.5, 6, 1, 3);
+        ctx.fillRect(2.5, 6, 1, 3);
+
+        // 3. SNEAKERS (Moved up to y=11)
+        ctx.fillStyle = '#fff'; // White Socks
+        ctx.fillRect(-3.5, 10, 3, 1); ctx.fillRect(0.5, 10, 3, 1);
+        ctx.fillStyle = '#81c784'; // Light Green Shoes
+        ctx.fillRect(-3.5, 11, 3, 1.5); ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 4. BODY (Bright Green Sporty Top)
+        ctx.fillStyle = '#4caf50'; 
+        ctx.fillRect(-4.5, -2, 9, 8);
+        
+        // White Collar Rim
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-2.5, -2, 5, 1);
+
+        // 5. ARMS (Ultra-Thin 1.5px - Matching Shummi)
+        ctx.fillStyle = '#4caf50'; // Sleeve
+        ctx.fillRect(-6, -1, 1.5, 3); 
+        ctx.fillRect(4.5, -1, 1.5, 3);
+        
+        // Skin Arms
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6, 2, 1.5, 3); 
+        ctx.fillRect(4.5, 2, 1.5, 3);
+
+        // 6. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 7. HAIR (Black Sporty Ponytail)
+        ctx.fillStyle = '#313b36'; // Jet Black
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-5, -7, 2, 6); // Left Side
+        ctx.fillRect(3, -7, 2, 6);  // Right Side
+        
+        // Ponytail (High and bouncy)
+        ctx.beginPath(); 
+        ctx.moveTo(4, -8); 
+        ctx.quadraticCurveTo(9, -6, 7, 0); 
+        ctx.lineTo(5, -2); 
         ctx.fill();
 
-        // Buttons (Double row)
-        ctx.fillStyle = '#bdbdbd';
-        ctx.fillRect(-2, 0, 1, 1); ctx.fillRect(1, 0, 1, 1);
-        ctx.fillRect(-2, 3, 1, 1); ctx.fillRect(1, 3, 1, 1);
-
-        // Red Neckerchief
-        ctx.fillStyle = '#c62828';
-        ctx.beginPath(); ctx.moveTo(-3, -2); ctx.lineTo(0, 1); ctx.lineTo(3, -2); ctx.fill();
-
-        // 3. ARMS (Holding a Pan?)
-        ctx.fillStyle = '#ffffff'; 
-        ctx.fillRect(-8, -1, 3, 6); // Left Arm
-        ctx.fillRect(5, -1, 3, 6);  // Right Arm
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-8, 5, 3, 2);  ctx.fillRect(5, 5, 3, 2);
-
-        // 4. HEAD (Round Face)
-        ctx.fillStyle = skinColor; 
-        ctx.beginPath(); ctx.arc(0, -5, 4.5, 0, 6.28); ctx.fill(); // Rounder head
-        
-        // Facial Hair (Goatee)
-        ctx.fillStyle = '#3e2723'; 
-        ctx.fillRect(-1, -2, 2, 1);
-
-        // 5. CHEF HAT (Toque)
-        ctx.fillStyle = '#ffffff';
-        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1;
-        // Puffy Top
-        ctx.beginPath(); 
-        ctx.moveTo(-5, -9); 
-        ctx.bezierCurveTo(-7, -14, -3, -15, 0, -14); // Left puff
-        ctx.bezierCurveTo(3, -15, 7, -14, 5, -9);    // Right puff
-        ctx.fill(); ctx.stroke();
-        // Band
-        ctx.fillRect(-4, -9, 8, 3);
-    }
-
-    // --- STEVE (The Elder Chef) ---
-    else if(n.name === "Steve") {
-        // 1. LEGS (Black Slacks)
-        ctx.fillStyle = '#212121'; 
-        ctx.fillRect(-3, 6, 2.5, 8); ctx.fillRect(0.5, 6, 2.5, 8);
-
-        // 2. BODY (Apron Style)
-        ctx.fillStyle = '#ffffff'; 
-        ctx.fillRect(-4, -2, 8, 9); // White Shirt
-        
-        // Navy Blue Apron
-        ctx.fillStyle = '#1a237e'; 
-        ctx.fillRect(-3, 1, 6, 7); // Bib
-        ctx.fillRect(-3.5, 4, 7, 6); // Lower Apron
-
-        // Apron Strings
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(-4, 4, 1, 1); ctx.fillRect(3, 4, 1, 1);
-
-        // 3. ARMS
-        ctx.fillStyle = '#ffffff'; 
-        ctx.fillRect(-6, -1, 2, 5); ctx.fillRect(4, -1, 2, 5);
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-6, 4, 2, 2); ctx.fillRect(4, 4, 2, 2);
-
-        // 4. HEAD (Aged)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        
-        // Grey Hair
-        ctx.fillStyle = '#90a4ae'; 
-        ctx.fillRect(-4, -8, 8, 2); // Top
-        ctx.fillRect(-4, -6, 1, 3); // Sides
-        ctx.fillRect(3, -6, 1, 3);
-
-        // Mustache (White/Grey)
-        ctx.fillStyle = '#cfd8dc'; 
-        ctx.fillRect(-2, -3, 4, 1.5); 
-
-        // 5. SMALL HAT (Flat Cap)
-        ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.ellipse(0, -9, 5, 2, 0, 0, 6.28); ctx.fill();
-    }
-
-    // --- NICOLAS (The Pilot) ---
-    else if(n.name === "Nicolas") {
-        // 1. LEGS (Navy Uniform)
-        ctx.fillStyle = '#1a237e'; 
-        ctx.fillRect(-3.5, 6, 3, 8); 
-        ctx.fillRect(0.5, 6, 3, 8);
-        
-        // Shoes
+        // Eyes
         ctx.fillStyle = '#000'; 
-        ctx.fillRect(-4, 13, 3.5, 1); ctx.fillRect(0.5, 13, 3.5, 1);
+        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    }
 
-        // 2. BODY (Pilot Jacket)
-        ctx.fillStyle = '#1a237e'; 
-        ctx.fillRect(-5, -2, 10, 9); // Jacket
+
+
+
+// --- SIMON (Refined: Added Brown Hair/Sideburns) ---
+    else if(n.name === "Simon") {
+        // 1. LEGS
+        ctx.fillStyle = '#263238'; 
+        ctx.fillRect(-5.5, 5, 5, 5); ctx.fillRect(0.5, 5, 5, 5);
+        ctx.fillStyle = '#cfd8dc'; 
+        ctx.fillRect(-4, 6, 2, 2); ctx.fillRect(2, 6, 2, 2);
+
+        // 2. BODY
+        ctx.fillStyle = '#ffffff'; 
+        ctx.beginPath();
+        ctx.moveTo(-7, -3); ctx.lineTo(7, -3); 
+        ctx.lineTo(8, 5);   ctx.lineTo(-8, 5); 
+        ctx.fill();
         
-        // Gold Buttons (Double Breasted)
-        ctx.fillStyle = '#ffd700'; 
-        ctx.fillRect(-2, 1, 1, 1); ctx.fillRect(1, 1, 1, 1);
-        ctx.fillRect(-2, 4, 1, 1); ctx.fillRect(1, 4, 1, 1);
+        // Buttons
+        ctx.fillStyle = '#bdbdbd';
+        ctx.fillRect(-2, -1, 1, 1); ctx.fillRect(1, -1, 1, 1);
+        ctx.fillRect(-2, 2, 1, 1);  ctx.fillRect(1, 2, 1, 1);
 
-        // White Shirt & Tie
-        ctx.fillStyle = '#fff'; 
-        ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(0, 2); ctx.lineTo(2, -2); ctx.fill();
-        ctx.fillStyle = '#000'; // Black Tie
-        ctx.fillRect(-0.5, -1, 1, 3);
-
-        // Epaulets (Shoulder Rank)
-        ctx.fillStyle = '#ffd700'; 
-        ctx.fillRect(-6, -2, 2, 1); ctx.fillRect(4, -2, 2, 1);
+        // Scarf
+        ctx.fillStyle = '#c62828';
+        ctx.beginPath(); ctx.moveTo(-3, -3); ctx.lineTo(0, 0); ctx.lineTo(3, -3); ctx.fill();
 
         // 3. ARMS
-        ctx.fillStyle = '#1a237e'; 
-        ctx.fillRect(-7, -1, 2, 6); ctx.fillRect(5, -1, 2, 6);
-        // Gold Stripes on cuffs
-        ctx.fillStyle = '#ffd700';
-        ctx.fillRect(-7, 3, 2, 1); ctx.fillRect(5, 3, 2, 1);
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(-9, -2, 3, 4); ctx.fillRect(6, -2, 3, 4);
+        
+        ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-9, -2, 3, 4); ctx.strokeRect(6, -2, 3, 4);
+
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 5, 2, 2); ctx.fillRect(5, 5, 2, 2);
+        ctx.fillRect(-9, 2, 3, 2);  ctx.fillRect(6, 2, 3, 2);
 
         // 4. HEAD
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        ctx.fillStyle = skinColor; 
+        ctx.beginPath(); ctx.arc(0, -5, 5.5, 0, 6.28); ctx.fill(); 
 
-        // 5. AVIATOR SUNGLASSES
-        ctx.fillStyle = '#111'; 
-        ctx.beginPath();
-        ctx.moveTo(-3, -5); ctx.lineTo(-1, -5); ctx.lineTo(-1.5, -3); ctx.lineTo(-3, -3); // Left Lens
-        ctx.moveTo(1, -5);  ctx.lineTo(3, -5);  ctx.lineTo(3, -3);    ctx.lineTo(1.5, -3);  // Right Lens
-        ctx.fill();
-        // Bridge
-        ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.moveTo(-1, -4.5); ctx.lineTo(1, -4.5); ctx.stroke();
-
-        // 6. PILOT HAT
-        // Visor
+        // [NEW] Brown Hair (Sideburns)
+        ctx.fillStyle = '#5d4037'; 
+        ctx.fillRect(-5.5, -7, 2, 4); // Left
+        ctx.fillRect(3.5, -7, 2, 4);  // Right
+        
         ctx.fillStyle = '#000'; 
-        ctx.beginPath(); ctx.ellipse(0, -7, 5, 1.5, 0, 0, 6.28); ctx.fill();
-        // Cap Top
-        ctx.fillStyle = '#fff'; // White Top Cap
+        // Eyes (1x1, Position -5)
+        ctx.fillRect(-3, -5, 1, 1); 
+        ctx.fillRect(2, -5, 1, 1); 
+        
+        ctx.fillStyle = '#3e2723'; ctx.fillRect(-1.5, -3, 3, 1.5); // Goatee
+
+        // 5. HAT
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#e0e0e0'; ctx.lineWidth = 1; 
         ctx.beginPath(); 
-        ctx.moveTo(-5, -8); ctx.lineTo(5, -8); 
-        ctx.quadraticCurveTo(6, -12, 0, -12); 
-        ctx.quadraticCurveTo(-6, -12, -5, -8); 
-        ctx.fill();
-        // Badge
-        ctx.fillStyle = '#ffd700'; ctx.fillRect(-1, -11, 2, 2);
+        ctx.moveTo(-6, -9); 
+        ctx.bezierCurveTo(-8, -14, -4, -15, 0, -14); 
+        ctx.bezierCurveTo(4, -15, 8, -14, 6, -9);    
+        ctx.fill(); ctx.stroke();
+        // Brim
+        ctx.fillRect(-5, -9, 10, 3);
     }
 
 
 
 
 
+    // --- STEVE (Head Chef - Thinner Outline) ---
+    else if(n.name === "Steve") {
+        // 1. LEGS
+        ctx.fillStyle = '#263238'; 
+        ctx.fillRect(-4, 6, 3, 5); ctx.fillRect(1, 6, 3, 5);
 
-// --- ELDER MAN (The Wise Sage) ---
+        // 2. BODY
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(-6, -2, 12, 9);
+        ctx.fillStyle = '#1a237e'; ctx.fillRect(-5, 4, 10, 4); // Apron
+        ctx.fillStyle = '#d32f2f'; ctx.beginPath(); ctx.moveTo(-3, -2); ctx.lineTo(0, 2); ctx.lineTo(3, -2); ctx.fill(); // Scarf
+
+        // Buttons
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, 1, 1, 1); ctx.fillRect(1, 1, 1, 1); 
+        ctx.fillRect(-2, 3, 1, 1); ctx.fillRect(1, 3, 1, 1); 
+
+        // 3. ARMS (Thinner Outline)
+        ctx.fillStyle = '#ffffff'; 
+        ctx.fillRect(-8, -1, 2, 5); ctx.fillRect(6, -1, 2, 5);
+        
+        // **FIX: Thinner Line (0.5)**
+        ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-8, -1, 2, 5); ctx.strokeRect(6, -1, 2, 5);
+
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-8, 4, 2, 2); ctx.fillRect(6, 4, 2, 2);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-4, -9, 8, 7);
+        ctx.fillStyle = '#90a4ae'; ctx.fillRect(-5, -8, 1, 4); ctx.fillRect(4, -8, 1, 4); // Hair
+        ctx.fillStyle = '#000'; ctx.fillRect(-3, -7, 1, 1); ctx.fillRect(2, -7, 1, 1); // Eyes
+        ctx.fillStyle = '#b0bec5'; ctx.fillRect(-5, -5, 10, 2); // Mustache
+
+        // 5. HAT
+        ctx.fillStyle = '#fff'; ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 1; // Hat outline stays distinct
+        ctx.beginPath(); ctx.arc(0, -14, 6, Math.PI, 0); ctx.lineTo(5, -9); ctx.lineTo(-5, -9); ctx.closePath();
+        ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillRect(-5, -11, 10, 3);
+    }
+
+
+
+
+
+    // --- NICOLAS (Pilot - Hat Raised 1px) ---
+    else if(n.name === "Nicolas") {
+        // 1. LEGS (Lengthened)
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-4, 2, 3.5, 8); 
+        ctx.fillRect(0.5, 2, 3.5, 8);
+        ctx.fillStyle = '#000'; ctx.fillRect(-4.5, 9, 4, 1); ctx.fillRect(0.5, 9, 4, 1);
+
+        // 2. BODY
+        ctx.fillStyle = '#1a237e'; ctx.fillRect(-6, -6, 12, 8); 
+        ctx.fillStyle = '#ffd700'; // Buttons
+        ctx.fillRect(-2, -3, 1, 1); ctx.fillRect(1, -3, 1, 1);
+        ctx.fillRect(-2, 0, 1, 1); ctx.fillRect(1, 0, 1, 1);
+
+        // Tie
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(-2, -6); ctx.lineTo(0, -4); ctx.lineTo(2, -6); ctx.fill();
+        ctx.fillStyle = '#000'; ctx.fillRect(-0.5, -5, 1, 2);
+        // Epaulets
+        ctx.fillStyle = '#ffd700'; ctx.fillRect(-7, -6, 2, 1); ctx.fillRect(5, -6, 2, 1);
+
+        // 3. ARMS (Thinner Outline)
+        ctx.fillStyle = '#1a237e'; 
+        ctx.fillRect(-8, -5, 2, 5); ctx.fillRect(6, -5, 2, 5);
+        
+        // **FIX: Thinner Line (0.5)**
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-8, -5, 2, 5); ctx.strokeRect(6, -5, 2, 5);
+
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-8, 0, 2, 2); ctx.fillRect(6, 0, 2, 2);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-4, -12, 8, 6);
+
+        // Aviators
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-4, -10, 3, 2); ctx.fillRect(1, -10, 3, 2);
+        ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5;
+        ctx.beginPath(); ctx.moveTo(-1, -9.5); ctx.lineTo(1, -9.5); ctx.stroke();
+
+        // 5. HAT (MOVED UP 1 PIXEL)
+        // Visor: -13 (Was -12)
+        ctx.fillStyle = '#000'; ctx.fillRect(-5, -13, 10, 2);
+        
+        // Cap: -13 (Was -12)
+        ctx.fillStyle = '#fff'; 
+        ctx.beginPath(); ctx.moveTo(-6, -13); ctx.lineTo(6, -13); 
+        ctx.quadraticCurveTo(7, -17, 0, -17); ctx.quadraticCurveTo(-7, -17, -6, -13); ctx.fill();
+        
+        // Badge
+        ctx.fillStyle = '#ffd700'; ctx.fillRect(-1, -16, 2, 2);
+    }
+
+
+
+
+// --- ELDER MAN (Refined: Eyes moved 0.5px Left) ---
     else if(n.name === "Elder Man") {
-        // 1. ROBES (Long & Flowing)
+        // 1. ROBES (Shortened & Flared)
         ctx.fillStyle = '#37474f'; // Dark Grey Robe
         ctx.beginPath();
-        ctx.moveTo(-5, -2); 
+        ctx.moveTo(-5, -2); // Shoulders
         ctx.lineTo(5, -2);
-        ctx.lineTo(7, 13); // Flared bottom
-        ctx.lineTo(-7, 13);
+        ctx.lineTo(7, 11);  // Bottom Right
+        ctx.lineTo(-7, 11); // Bottom Left
         ctx.fill();
 
-        // Robe Trim (Lighter)
+        // Robe Trim
         ctx.fillStyle = '#78909c'; 
-        ctx.fillRect(-2, -2, 4, 15); // Center strip
+        ctx.fillRect(-2, -2, 4, 13); 
 
-        // 2. HEAD (Bald & Bearded)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        // 2. SHOES
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-4, 11, 3, 1.5);
+        ctx.fillRect(1, 11, 3, 1.5);
+
+        // 3. HEAD
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-3, -7, 6, 6);
         
-        // Long White Beard
+        // Beard
         ctx.fillStyle = '#eeeeee'; 
         ctx.beginPath(); 
         ctx.moveTo(-3, -3); 
         ctx.lineTo(3, -3); 
-        ctx.lineTo(0, 6); // Pointy beard covering chest
+        ctx.lineTo(0, 5); 
         ctx.fill();
 
-        // Eyebrows (Bushy)
-        ctx.fillRect(-3, -6, 2, 1); ctx.fillRect(1, -6, 2, 1);
+        // Eyebrows (Original Position)
+        ctx.fillStyle = '#eeeeee';
+        ctx.fillRect(-3, -6, 2, 1); 
+        ctx.fillRect(1, -6, 2, 1);
 
-        // 3. STAFF (Wooden, Magical)
-        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(7, 13); ctx.lineTo(7, -8); ctx.stroke(); // Staff pole
+        // Eyes (Moved 0.5px LEFT)
+        ctx.fillStyle = '#000';
+        ctx.fillRect(-2.5, -5, 1, 1); // Was -2
+        ctx.fillRect(1.5, -5, 1, 1);  // Was 2
+
+        // 4. STAFF
+        ctx.strokeStyle = '#6b4e2f'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(7, 11); ctx.lineTo(7, -8); ctx.stroke(); 
         
-        // Orb on Staff
+        // Orb
         ctx.fillStyle = '#00bcd4'; ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 5;
         ctx.beginPath(); ctx.arc(7, -10, 2, 0, 6.28); ctx.fill();
         ctx.shadowBlur = 0;
 
-        // 4. ARMS (Sleeves)
+        // 5. ARMS
         ctx.fillStyle = '#37474f'; 
-        ctx.fillRect(-7, 0, 2, 6); // Left
-        ctx.fillRect(5, 0, 2, 6);  // Right
-    }
+        ctx.fillRect(-7, -1, 2, 4); 
+        ctx.fillRect(5, -1, 2, 4);
 
-
-
-
-
-
-
-    // --- DAVID (Gym Buddy - German/Taiwanese Mix) ---
-    else if(n.name === "David") {
-        // 1. LEGS (Dark Straight Trousers - Practical)
-        ctx.fillStyle = '#263238'; // Dark Slate/Black Pants
-        ctx.fillRect(-4, 6, 3.5, 9); // Left (Slightly wide stance)
-        ctx.fillRect(0.5, 6, 3.5, 9);  // Right
-        
-        // Sturdy Leather Shoes
-        ctx.fillStyle = '#3e2723'; 
-        ctx.fillRect(-4, 15, 3.5, 1); ctx.fillRect(0.5, 15, 3.5, 1);
-
-        // 2. BODY (Fitted Grey T-Shirt)
-        ctx.fillStyle = '#78909c'; // Cool Grey Basic Tee
-        ctx.fillRect(-5.5, -2, 11, 9); // Broad chest (Gym physique)
-        
-        // Simple Neckline
-        ctx.fillStyle = '#b0bec5'; 
-        ctx.fillRect(-2, -2, 4, 1);
-
-        // 3. ARMS (Short Sleeves showing muscle)
-        ctx.fillStyle = '#78909c'; 
-        ctx.fillRect(-7.5, -1, 2, 4); // Sleeves
-        ctx.fillRect(5.5, -1, 2, 4);
-        
-        // Skin Arms (Thick to show he lifts)
+        // Hands
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-7.5, 3, 2, 4); 
-        ctx.fillRect(5.5, 3, 2, 4);
-
-        // 4. HEAD (Neat & Clean)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        
-        // Hair (Dark Brown - Mixed Heritage)
-        ctx.fillStyle = '#4e342e'; // Deep Brown
-        ctx.fillRect(-4, -9, 8, 3); // Top
-        ctx.fillRect(-4, -6, 1, 2); // Tapered sides
-        ctx.fillRect(3, -6, 1, 2);
-
-        // Rectangular Glasses (The intellectual/efficient look)
-        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.5;
-        ctx.strokeRect(-2.5, -5, 2, 1.5); 
-        ctx.strokeRect(0.5, -5, 2, 1.5);
-        ctx.beginPath(); ctx.moveTo(-0.5, -4.5); ctx.lineTo(0.5, -4.5); ctx.stroke();
+        ctx.fillRect(-7, 3, 2, 2); 
+        ctx.fillRect(5, 3, 2, 2);
     }
 
-    // --- GRACE (Rich Woman) ---
+
+
+
+
+
+    // --- DAVID (Tall Proportions - Smaller/Neater Collar) ---
+    else if(n.name === "David") {
+        // 1. LEGS (Tall: Start y=2, Height 8)
+        ctx.fillStyle = '#263238'; 
+        ctx.fillRect(-3.5, 2, 3, 8); // Left
+        ctx.fillRect(0.5, 2, 3, 8);  // Right
+        
+        // Shoes (y=10)
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-3.5, 10, 3, 1.5); 
+        ctx.fillRect(0.5, 10, 3, 1.5);
+
+        // 2. BODY (Higher Torso: y=-6)
+        ctx.fillStyle = '#78909c'; // Grey Polo
+        ctx.fillRect(-4.5, -6, 9, 8); 
+        
+        // Micro-Outline
+        ctx.strokeStyle = '#546e7a'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-4.5, -6, 9, 8);
+        
+        // Polo Collar (Resized: Smaller and closer to neck)
+        ctx.fillStyle = '#b0bec5'; 
+        ctx.beginPath();
+        // Left Side
+        ctx.moveTo(-1.5, -6);   // Inner Neck
+        ctx.lineTo(-3.0, -5.5); // Outer Top (Moved inward)
+        ctx.lineTo(-3.0, -4.0); // Outer Bottom
+        // V-Neck Point
+        ctx.lineTo(0, -3.0);    // Center V
+        // Right Side
+        ctx.lineTo(3.0, -4.0);  // Outer Bottom 
+        ctx.lineTo(3.0, -5.5);  // Outer Top
+        ctx.lineTo(1.5, -6);    // Inner Neck
+        ctx.fill();
+
+        // Neck Opening (Skin)
+        ctx.fillStyle = skinColor;
+        ctx.beginPath(); 
+        ctx.moveTo(-1.5, -6); 
+        ctx.lineTo(0, -3.0); 
+        ctx.lineTo(1.5, -6); 
+        ctx.fill();
+
+        // 3. ARMS (Higher Shoulders)
+        // Sleeves (Start y=-5)
+        ctx.fillStyle = '#78909c'; 
+        ctx.fillRect(-6.5, -5, 1.5, 3); 
+        ctx.strokeRect(-6.5, -5, 1.5, 3); // Outline
+        
+        ctx.fillRect(5, -5, 1.5, 3);
+        ctx.strokeRect(5, -5, 1.5, 3);    // Outline
+        
+        // Skin Arms (Elongated for tall body)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, -2, 1.5, 4); 
+        ctx.fillRect(5, -2, 1.5, 4);
+
+        // 4. HEAD (Tall: y=-12)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -12, 6, 6);
+        
+        // Hair (Dark Brown - Neat)
+        ctx.fillStyle = '#4e342e'; 
+        ctx.fillRect(-4, -14, 8, 3); // Top
+        ctx.fillRect(-4, -11, 1, 2); // Sideburns
+        ctx.fillRect(3, -11, 1, 2);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -10, 1, 1); 
+        ctx.fillRect(1, -10, 1, 1);
+    }
+
+
+
+
+
+
+  // --- GRACE (Refined: Original Hair + Elegant Hat) ---
     else if(n.name === "Grace") {
-        // 1. DRESS (Elegant Gown)
-        let dressGrad = ctx.createLinearGradient(0, -2, 0, 15);
-        dressGrad.addColorStop(0, '#8e24aa'); // Purple
-        dressGrad.addColorStop(1, '#4a148c'); // Dark Purple
+        // 1. DRESS (Purple Gown)
+        let dressGrad = ctx.createLinearGradient(0, -2, 0, 12);
+        dressGrad.addColorStop(0, '#8e24aa'); 
+        dressGrad.addColorStop(1, '#4a148c'); 
         
         ctx.fillStyle = dressGrad;
         ctx.beginPath();
-        ctx.moveTo(-5, -2); ctx.lineTo(5, -2); // Shoulders
-        ctx.lineTo(8, 14); ctx.lineTo(-8, 14); // Skirt flare
+        ctx.moveTo(-5, -2); 
+        ctx.lineTo(5, -2);
+        ctx.lineTo(8, 12);  
+        ctx.lineTo(-8, 12); 
         ctx.fill();
 
-        // 2. FUR STOLE (White Boa)
+        // 2. FUR STOLE
         ctx.fillStyle = '#fff'; ctx.shadowColor='#eee'; ctx.shadowBlur=3;
         ctx.beginPath(); 
-        ctx.arc(-4, 0, 3, 0, 6.28); ctx.arc(0, 1, 3, 0, 6.28); ctx.arc(4, 0, 3, 0, 6.28);
+        ctx.arc(-4, -1, 3, 0, 6.28); 
+        ctx.arc(0, 0, 3, 0, 6.28); 
+        ctx.arc(4, -1, 3, 0, 6.28);
         ctx.fill(); ctx.shadowBlur=0;
 
-        // 3. HEAD & HAIR (Fancy Updo)
+        // 3. HEAD
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
         
-        // Hair bun
-        ctx.fillStyle = '#fdd835'; // Blonde
-        ctx.beginPath(); ctx.arc(0, -9, 5, 0, 6.28); ctx.fill(); // Big Bun
-        ctx.fillRect(-4, -8, 8, 3); // Bangs
+        // 4. HAIR (Original Blonde Updo peeking out)
+        ctx.fillStyle = '#fdd835'; 
+        ctx.fillRect(-4, -7, 1, 4); // Left side
+        ctx.fillRect(3, -7, 1, 4);  // Right side
+        ctx.fillRect(-4, -8, 8, 2); // Bangs under brim
 
-        // 4. JEWELRY
-        // Pearl Necklace
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-2, -1, 1, 1); ctx.fillRect(0, 0, 1, 1); ctx.fillRect(2, -1, 1, 1);
-        
-        // Earrings
-        ctx.fillStyle = '#ffd700';
-        ctx.fillRect(-4, -5, 1, 2); ctx.fillRect(3, -5, 1, 2);
-
-        // Handbag
-        ctx.fillStyle = '#c62828'; ctx.fillRect(5, 5, 3, 4); // Bag
-        ctx.strokeStyle = '#ffd700'; ctx.lineWidth=1; 
-        ctx.beginPath(); ctx.moveTo(6, 5); ctx.lineTo(6, 3); ctx.lineTo(7, 3); ctx.lineTo(7, 5); ctx.stroke();
-    }
-
-
-
-
-
-// --- JACK (Chic Smart Casual - Blazer, No Glasses, Grey Beanie) ---
-    else if(n.name === "Jack") {
-        // 1. LEGS (Dark Denim - Rolled Up)
-        ctx.fillStyle = '#283593'; // Indigo Jeans
-        ctx.fillRect(-3.5, 6, 3, 8); // Left
-        ctx.fillRect(0.5, 6, 3, 8);  // Right
-        
-        // Selvedge Cuff (Rolled up)
-        ctx.fillStyle = '#e0e0e0'; 
-        ctx.fillRect(-3.5, 13, 3, 1.5); ctx.fillRect(0.5, 13, 3, 1.5);
-
-        // Loafers (Leather, no socks visible)
-        ctx.fillStyle = '#3e2723'; 
-        ctx.fillRect(-3.5, 14.5, 3, 1); ctx.fillRect(0.5, 14.5, 3, 1);
-
-        // 2. BODY (Unstructured Brown Blazer over Tee)
-        ctx.fillStyle = '#5d4037'; // Brown Blazer
-        ctx.fillRect(-5, -2, 10, 10);
-        
-        // Inner White T-Shirt (Visible center)
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-1.5, -2, 3, 9); 
-
-        // Blazer Lapels
-        ctx.fillStyle = '#4e342e'; // Darker brown shadow
-        ctx.beginPath(); ctx.moveTo(-1.5, -2); ctx.lineTo(-1.5, 6); ctx.lineTo(-4, -2); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(1.5, -2);  ctx.lineTo(1.5, 6);  ctx.lineTo(4, -2);  ctx.fill();
-
-        // 3. ARMS (Blazer Sleeves)
-        ctx.fillStyle = '#5d4037'; 
-        ctx.fillRect(-7, -1, 2, 7); 
-        ctx.fillRect(5, -1, 2, 7);
-        // Hands
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 6, 2, 2); ctx.fillRect(5, 6, 2, 2);
-
-        // 4. HEAD (Grey Beanie, No Glasses)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        
-        // Stylish Fisherman Beanie (Heather Grey)
-        ctx.fillStyle = '#b0bec5'; // Light Blue-Grey
-        // Dome
-        ctx.beginPath(); ctx.arc(0, -9, 4.5, Math.PI, 0); ctx.fill();
-        // Folded Rim
-        ctx.fillRect(-4.5, -9, 9, 2.5);
-        
-        // Hair poking out bottom of beanie (Dark)
-        ctx.fillStyle = '#212121'; 
-        ctx.fillRect(-4, -7, 1, 2); // Sideburns
-        ctx.fillRect(3, -7, 1, 2);
-
-        // Eyes (Visible now)
-        ctx.fillStyle = '#111'; 
+        // Eyes
+        ctx.fillStyle = '#000';
         ctx.fillRect(-2, -5, 1, 1); 
         ctx.fillRect(1, -5, 1, 1);
+
+        // 5. HAT (Wide Brimmed Elegant Hat)
+        ctx.fillStyle = '#fff'; // White to match Fur Stole
+        // Brim
+        ctx.beginPath(); ctx.ellipse(0, -9, 8, 2.5, 0, 0, Math.PI*2); ctx.fill();
+        // Dome
+        ctx.beginPath(); ctx.arc(0, -10, 3.5, Math.PI, 0); ctx.fill();
+        // Hat Band (Purple to match dress)
+        ctx.fillStyle = '#8e24aa';
+        ctx.fillRect(-3.5, -10, 7, 1.5);
+
+        // 6. JEWELRY
+        // Necklace
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-2, -1, 1, 1); ctx.fillRect(0, 0, 1, 1); ctx.fillRect(2, -1, 1, 1);
+        // Earrings
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-5, -5, 1, 2); ctx.fillRect(4, -5, 1, 2);
+
+        // 7. ARMS & BAG
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7, 0, 2, 5); 
+        ctx.fillRect(5, 0, 2, 5);
+
+        ctx.fillStyle = '#c62828'; 
+        ctx.fillRect(6, 5, 3, 3); 
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth=1; 
+        ctx.beginPath(); ctx.moveTo(7, 5); ctx.lineTo(7, 3); ctx.lineTo(8, 3); ctx.lineTo(8, 5); ctx.stroke();
     }
-    // --- JOHN (Sleek Smart Casual - Mock Neck & Trousers) ---
+
+  // --- JACK (Refined: Thinner Arms, No Holes, Micro-Outlines) ---
+    else if(n.name === "Jack") {
+        // 1. LEGS (Short 5px)
+        ctx.fillStyle = '#283593'; 
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);  
+        
+        // Cuff
+        ctx.fillStyle = '#e0e0e0'; 
+        ctx.fillRect(-3.5, 10, 3, 1); ctx.fillRect(0.5, 10, 3, 1);
+
+        // Loafers
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. BODY (Jacket over Tee)
+        // A. Draw SOLID Jacket Base (Prevents holes)
+        ctx.fillStyle = '#c47e33'; 
+        ctx.fillRect(-4.5, -2, 9, 8);
+        
+        // Outline (Tiny)
+        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-4.5, -2, 9, 8);
+        
+        // B. Inner White T-Shirt (Layered on top)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-1.5, -2, 3, 8); 
+
+        // C. Jacket Lapels (Angled inwards)
+        ctx.fillStyle = '#a86319'; 
+        ctx.beginPath(); ctx.moveTo(-1.5, -2); ctx.lineTo(-1.5, 5); ctx.lineTo(-4.5, -2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(1.5, -2);  ctx.lineTo(1.5, 5);  ctx.lineTo(4.5, -2);  ctx.fill();
+
+        // 3. ARMS (Thinner - 1.5px to match Fu Jing)
+        ctx.fillStyle = '#c47e33'; 
+        // Left Sleeve
+        ctx.fillRect(-6.5, -1, 1.5, 3); 
+        ctx.strokeRect(-6.5, -1, 1.5, 3); // Outline
+        
+        // Right Sleeve
+        ctx.fillRect(5, -1, 1.5, 3);    
+        ctx.strokeRect(5, -1, 1.5, 3);    // Outline
+        
+        // Skin Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 2, 1.5, 3); 
+        ctx.fillRect(5, 2, 1.5, 3);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // 5. HAT (Detailed Fisherman Beanie)
+        ctx.fillStyle = '#b0bec5'; 
+        ctx.beginPath(); ctx.arc(0, -9, 4.5, Math.PI, 0); ctx.fill(); 
+        
+        // Ribbing
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.fillRect(-2, -12, 0.5, 3); ctx.fillRect(0, -12.5, 0.5, 3.5); ctx.fillRect(2, -12, 0.5, 3);
+
+        // Folded Rim
+        ctx.fillStyle = '#b0bec5'; ctx.fillRect(-4.5, -9, 9, 2.5);
+        
+        // Label Patch
+        ctx.fillStyle = '#111'; ctx.fillRect(1.5, -8.5, 2, 1.5);
+
+        // Sideburns
+        ctx.fillStyle = '#212121'; ctx.fillRect(-4, -7, 1, 2); ctx.fillRect(3, -7, 1, 2);
+
+        // Eyes
+        ctx.fillStyle = '#000'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    }
+
+   // --- JOHN (Refined: Arms shifted inward to close gaps) ---
     else if(n.name === "John") {
-        // 1. LEGS (Tailored Grey Trousers)
-        ctx.fillStyle = '#616161'; // Charcoal Grey
-        ctx.fillRect(-3.5, 6, 3, 9); 
-        ctx.fillRect(0.5, 6, 3, 9);
-        
-        // Black Chelsea Boots
+        // 1. LEGS
+        ctx.fillStyle = '#616161'; 
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
         ctx.fillStyle = '#000'; 
-        ctx.fillRect(-3.5, 14, 3, 1.5); ctx.fillRect(0.5, 14, 3, 1.5);
+        ctx.fillRect(-3.5, 11, 3, 1.5); ctx.fillRect(0.5, 11, 3, 1.5);
 
-        // 2. BODY (Fitted Black Mock-Neck)
-        ctx.fillStyle = '#212121'; // Matte Black
-        ctx.fillRect(-4.5, -2, 9, 10); // Slim fit
-        
-        // Neck detail (Mock neck collar)
-        ctx.fillRect(-3, -3, 6, 2); 
-
-        // 3. ARMS (Long Sleeves)
+        // 2. BODY
         ctx.fillStyle = '#212121'; 
-        ctx.fillRect(-6.5, -1, 2, 7); // Left
-        ctx.fillRect(4.5, -1, 2, 7);  // Right
+        ctx.fillRect(-4.5, -2, 9, 8);
         
-        // Silver Watch (Detail)
-        ctx.fillStyle = '#cfd8dc';
-        ctx.fillRect(-6.5, 5, 2, 1);
+        // Outline (Tiny)
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-4.5, -2, 9, 8);
+
+        // Collar Detail
+        ctx.fillStyle = '#424242'; 
+        ctx.fillRect(-3, -2, 6, 1); 
+
+        // 3. ARMS (Gap Fixed: Moved inward to touch body exactly)
+        ctx.fillStyle = '#212121'; 
+        
+        // Left Sleeve (x=-6 touches body at -4.5)
+        ctx.fillRect(-6, -1, 1.5, 4); 
+        ctx.strokeRect(-6, -1, 1.5, 4); 
+        
+        // Right Sleeve (x=4.5 touches body at 4.5)
+        ctx.fillRect(4.5, -1, 1.5, 4);
+        ctx.strokeRect(4.5, -1, 1.5, 4);    
+        
+        // Watch (Adjusted for new arm position)
+        ctx.fillStyle = '#cfd8dc'; 
+        ctx.fillRect(-6.5, 3, 2.5, 1); 
+	ctx.fillRect(4.5, 3, 2.5, 1); 
 
         // Hands
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-6.5, 6, 2, 2); ctx.fillRect(4.5, 6, 2, 2);
+        ctx.fillRect(-6, 4, 1.5, 2); 
+        ctx.fillRect(4.5, 4, 1.5, 2);
 
-        // 4. HEAD (Slick)
+        // 4. HEAD
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
         
-        // Hair (Brown, Pompadour/Quiff)
+        // 5. HAIR
         ctx.fillStyle = '#3e2723'; 
-        ctx.fillRect(-3, -10, 6, 4); // High volume top
-        ctx.fillRect(-3.5, -7, 1, 3); // Tapered sides
-        ctx.fillRect(2.5, -7, 1, 3);
+        ctx.beginPath();
+        ctx.moveTo(-4, -6); ctx.lineTo(-4, -8);
+        ctx.lineTo(-2, -9.5); ctx.lineTo(0, -10); ctx.lineTo(3, -9);
+        ctx.lineTo(4, -8); ctx.lineTo(4, -6);
+        ctx.lineTo(3, -7); ctx.lineTo(-3, -7);
+        ctx.fill();
 
-        // Facial Hair (Clean Shaven or subtle stubble)
-        // Let's keep him clean for a sharp look.
+        // Loose Strand
+        ctx.fillRect(1, -10.5, 1, 1);
+
+        // Eyes
+        ctx.fillStyle = '#000'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
     }
 
 
@@ -8901,46 +9182,173 @@ if(n.name === "Shummi") {
 
 
 
-
-    // --- BIANBIAN (Army Soldier) ---
+// --- BIAN BAIN (Refined: Compact Soldier) ---
     else if(n.name === "Bian Bain") {
-        // 1. LEGS (Camo Pants)
+        // 1. LEGS (Camo Pants - Short 5px)
         ctx.fillStyle = '#33691e'; // Dark Green
-        ctx.fillRect(-4, 6, 3.5, 8); 
-        ctx.fillRect(0.5, 6, 3.5, 8);
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
         
         // Camo spots
         ctx.fillStyle = '#558b2f'; 
-        ctx.fillRect(-3, 8, 1, 1); ctx.fillRect(1, 10, 1, 1); ctx.fillRect(-2, 12, 1, 1);
+        ctx.fillRect(-2.5, 7, 1, 1); ctx.fillRect(1.5, 9, 1, 1);
 
         // Combat Boots
         ctx.fillStyle = '#000'; 
-        ctx.fillRect(-4.5, 13, 4, 2); ctx.fillRect(0.5, 13, 4, 2);
+        ctx.fillRect(-4, 11, 4, 1.5); ctx.fillRect(0, 11, 4, 1.5);
 
         // 2. BODY (Tactical Vest)
-        ctx.fillStyle = '#33691e'; ctx.fillRect(-5, -2, 10, 9); // Shirt
-        ctx.fillStyle = '#1b5e20'; ctx.fillRect(-5, 0, 10, 5);  // Vest/Armor
+        ctx.fillStyle = '#33691e'; ctx.fillRect(-4.5, -2, 9, 8); // Shirt Base
+        ctx.fillStyle = '#1b5e20'; ctx.fillRect(-4.5, -1, 9, 5);  // Vest/Armor
         
         // Belt/Pouches
-        ctx.fillStyle = '#212121'; ctx.fillRect(-5, 5, 10, 2); 
-        ctx.fillStyle = '#9e9d24'; ctx.fillRect(-4, 5, 2, 2); ctx.fillRect(2, 5, 2, 2); // Pouches
+        ctx.fillStyle = '#212121'; ctx.fillRect(-4.5, 5, 9, 1); 
+        ctx.fillStyle = '#9e9d24'; ctx.fillRect(-3.5, 5, 2, 2); ctx.fillRect(1.5, 5, 2, 2); 
 
         // 3. ARMS
         ctx.fillStyle = '#33691e'; 
-        ctx.fillRect(-7, -1, 2, 5); ctx.fillRect(5, -1, 2, 5); // Sleeves rolled down
+        ctx.fillRect(-7, -1, 2.5, 3); ctx.fillRect(4.5, -1, 2.5, 3); // Sleeves
+        
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 4, 2, 2); ctx.fillRect(5, 4, 2, 2); // Hands
+        ctx.fillRect(-7, 2, 2.5, 3); ctx.fillRect(4.5, 2, 2.5, 3); // Hands
 
         // 4. HEAD (Helmet)
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
         
         // Army Helmet
         ctx.fillStyle = '#1b5e20'; 
-        ctx.beginPath(); ctx.arc(0, -7, 5, Math.PI, 0); ctx.fill(); // Dome
-        ctx.fillRect(-5, -7, 10, 2); // Rim
+        ctx.beginPath(); ctx.arc(0, -8, 4.5, Math.PI, 0); ctx.fill(); // Dome
+        ctx.fillRect(-4.5, -8, 9, 2); // Rim
         
         // Chinstrap
-        ctx.fillStyle = '#111'; ctx.fillRect(-3, -2, 6, 1);
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-3, -1, 6, 1);
+
+        // Eyes (Visible under rim)
+        ctx.fillStyle = '#000';
+        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    }
+
+  // --- FU JING (Refined: Clearer Number 10) ---
+    else if(n.name === "Fu Jing") {
+        // 1. LEGS (Black Leggings)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-3, 6, 2.5, 5); 
+        ctx.fillRect(0.5, 6, 2.5, 5);
+
+        // 2. SHORTS (Layered Over)
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-3.5, 6, 3.5, 3); 
+        ctx.fillRect(0, 6, 3.5, 3);
+
+        // Sport Shoes
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 3. BODY (Argentina Jersey)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4.5, -2, 9, 8);
+        
+        // Stripes (Vertical)
+        ctx.fillStyle = '#4fc3f7'; 
+        ctx.fillRect(-3, -2, 2, 8); 
+        ctx.fillRect(1, -2, 2, 8);
+
+        // NUMBER 10 (Refined Pixel Art)
+        ctx.fillStyle = '#111';
+        // The "1"
+        ctx.fillRect(-2, 1, 1, 4); // Vertical
+        ctx.fillRect(-3, 1, 1, 1); // Serif
+        // The "0"
+        ctx.fillRect(1, 1, 2, 4);  // Base block
+        ctx.fillStyle = '#4fc3f7'; // Middle hole (Jersey color)
+        ctx.fillRect(1.5, 2, 1, 2); 
+
+        // 4. ARMS (Thinner - 1.5px width)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-6.5, -1, 1.5, 3); // Left Sleeve
+        ctx.fillRect(5, -1, 1.5, 3);    // Right Sleeve
+        
+        // Trim
+        ctx.fillStyle = '#4fc3f7';
+        ctx.fillRect(-6.5, 1, 1.5, 1); 
+        ctx.fillRect(5, 1, 1.5, 1);
+
+        // Hands (Thinner)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 2, 1.5, 3); 
+        ctx.fillRect(5, 2, 1.5, 3);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Short Sporty)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(-4, -9, 8, 3); 
+        ctx.fillRect(-4, -6, 1, 2); ctx.fillRect(3, -6, 1, 2);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    }
+
+    // --- TOMO CHIU (Refined: Stout, Muted Colors) ---
+    else if(n.name === "Tomo Chiu") {
+        // 1. LEGS (Short & Baggy)
+        // Muted Faded Denim
+        ctx.fillStyle = '#546e7a'; 
+        ctx.fillRect(-3.5, 8, 3, 3); // Starts lower (y=8), very short
+        ctx.fillRect(0.5, 8, 3, 3);
+        
+        // High Top Sneakers (Chunky)
+        ctx.fillStyle = '#eceff1'; 
+        ctx.fillRect(-4, 11, 3.5, 2); ctx.fillRect(0.5, 11, 3.5, 2);
+        ctx.fillStyle = '#263238'; // Dark detail
+        ctx.fillRect(-3, 11, 1.5, 1.5); ctx.fillRect(1.5, 11, 1.5, 1.5);
+
+        // 2. BODY (Wide Hoodie - Muted Slate Grey)
+        ctx.fillStyle = '#37474f'; 
+        ctx.fillRect(-5, -1, 10, 9); // Wide torso
+        
+        // Kangaroo Pocket (Slightly darker)
+        ctx.fillStyle = '#263238'; 
+        ctx.beginPath(); 
+        ctx.moveTo(-3, 8); ctx.lineTo(3, 8); 
+        ctx.lineTo(4, 5); ctx.lineTo(-4, 5); 
+        ctx.fill();
+
+        // 3. BLING (Gold Chain - Adjusted position)
+        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, -2, 3, 0, Math.PI); ctx.stroke();
+
+        // 4. ARMS (Tucked/Short)
+        ctx.fillStyle = '#37474f'; // Matches Hoodie
+        ctx.fillRect(-7.5, 0, 2.5, 5); // Sleeves
+        ctx.fillRect(5, 0, 2.5, 5);
+        
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-7.5, 5, 2.5, 2); ctx.fillRect(5, 5, 2.5, 2);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; 
+        ctx.beginPath(); ctx.arc(0, -5, 4.5, 0, 6.28); ctx.fill(); 
+        
+        // Eyes
+        ctx.fillStyle = '#111';
+        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+        
+        // Stubble (Goatee)
+        ctx.fillStyle = '#333'; 
+        ctx.fillRect(-1, -2, 2, 1);
+
+        // 6. HAT (Backwards Snapback - Matching Grey)
+        ctx.fillStyle = '#212121'; // Dark Grey Cap
+        ctx.beginPath(); ctx.arc(0, -8, 4.5, Math.PI, 0); ctx.fill(); // Dome
+        ctx.fillRect(-4.5, -8, 9, 2); // Rim
+        
+        // Snap (Backwards strap - Red accent)
+        ctx.fillStyle = '#d32f2f';
+        ctx.fillRect(-2, -7, 4, 1); 
     }
 
 
@@ -8950,40 +9358,446 @@ if(n.name === "Shummi") {
 
 
 
-
-// --- MARK (Asian Dad - FIXED) ---
+// --- MARK (Asian Dad - Brick Red, Fixed Hole, SMALLER Baby) ---
     else if(n.name === "Mark") {
-        // 1. LEGS (Cuffed Jeans)
-        ctx.fillStyle = '#1565c0'; 
-        ctx.fillRect(-3.5, 6, 3, 9); ctx.fillRect(0.5, 6, 3, 9);
-        ctx.fillStyle = '#cfd8dc'; // Cuffs
-        ctx.fillRect(-3.5, 13, 3, 2); ctx.fillRect(0.5, 13, 3, 2); 
+        // 1. LEGS (Compact 5px height)
+        ctx.fillStyle = '#1565c0'; // Denim Blue
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5); 
+        
+        // Cuffs
+        ctx.fillStyle = '#cfd8dc'; 
+        ctx.fillRect(-3.5, 10, 3, 1); 
+        ctx.fillRect(0.5, 10, 3, 1); 
 
-        // 2. BODY (Casual Stripe Tee)
-        ctx.fillStyle = '#fff'; ctx.fillRect(-5, -2, 10, 9);
-        ctx.fillStyle = '#37474f'; // Horizontal Stripes
-        ctx.fillRect(-5, 0, 10, 1); ctx.fillRect(-5, 3, 10, 1);
+        // Shoes
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
 
-        // 3. BABY (Front Carrier)
-        ctx.fillStyle = '#80deea'; // Cyan Carrier
-        ctx.fillRect(-4, 1, 8, 6);
-        // Baby Head
-        ctx.fillStyle = '#ffe0b2'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, 6.28); ctx.fill(); 
+        // 2. BODY (Brick Red)
+        ctx.fillStyle = '#c62828'; // Brick Red Base
+        ctx.fillRect(-5, -2, 10, 8); // Main Torso
+        
+        // Right Side Filler (Prevents hole)
+        ctx.fillRect(4, -1, 2, 6); 
+        
+        // Stripes (Dark Maroon)
+        ctx.fillStyle = '#7f0000'; 
+        ctx.fillRect(-5, 0, 10, 1); 
+        ctx.fillRect(-5, 3, 10, 1);
 
-        // 4. ARMS (Supporting Baby)
+        // 3. BABY BLANKET (Much Smaller Bundle)
+        ctx.fillStyle = '#81d4fa'; // Light Cyan
+        ctx.beginPath(); 
+        // Reduced size for a tiny baby look
+        ctx.ellipse(0, 2, 4.2, 2.5, 0.2, 0, Math.PI*2); 
+        ctx.fill();
+
+        // 4. ARMS (Holding the bundle)
+        // Sleeves
+        ctx.fillStyle = '#c62828'; 
+        ctx.fillRect(-7, -1, 2, 4); 
+        ctx.fillRect(5, -1, 2, 4);
+        
+        // Forearms (Skin)
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 2, 2, 5); ctx.fillRect(5, 2, 2, 5); // Forearms up
+        ctx.fillRect(-7, 3, 4, 2); // Left arm
+        ctx.fillRect(3, 3, 4, 2);  // Right arm
 
-        // 5. HEAD (Stylish)
+        // 5. BABY HEAD (Upper Layer - Small)
+        ctx.fillStyle = '#ffe0b2'; 
+        // Radius reduced to 2.0
+        ctx.beginPath(); ctx.arc(-3.0, 0.5, 2.0, 0, Math.PI*2); ctx.fill();
+        
+        // Baby Eyes (Adjusted for tiny head)
+        ctx.fillStyle = '#111'; 
+        // Upper Eye
+        ctx.fillRect(-3.2, -0.5, 0.8, 0.8); 
+        // Lower Eye
+        ctx.fillRect(-3.8, 1.0, 0.8, 0.8); 
+
+        // 6. MARK'S HEAD
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
         
-        // Hair (Black, neatly styled)
+        // Hair (Neat Black)
         ctx.fillStyle = '#1a1a1a'; 
-        ctx.fillRect(-4, -9, 8, 3); // Top
-        ctx.fillRect(-4, -6, 1, 3); ctx.fillRect(3, -6, 1, 3); // Sides
+        ctx.fillRect(-4, -9, 8, 3); 
+        ctx.fillRect(-4, -6, 1, 3); ctx.fillRect(3, -6, 1, 3);
 
-        // Eyes (Standard, Open, Friendly)
+        // Mark's Eyes
         ctx.fillStyle = '#111'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+// --- JUSSI (Finnish Guy - Tall "Nicolas" Proportions) ---
+    else if(n.name === "Jussi") {
+        // 1. LEGS (Long: Start at y=2, Height 8 - Matches Nicolas)
+        ctx.fillStyle = '#263238'; // Dark Grey Trousers
+        ctx.fillRect(-3.5, 2, 3, 8); // Left
+        ctx.fillRect(0.5, 2, 3, 8);  // Right
+
+        // Shoes (At y=10)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-3.5, 10, 3, 1.5); 
+        ctx.fillRect(0.5, 10, 3, 1.5);
+
+        // 2. BODY (Higher Torso: y=-6 to 2)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4.5, -6, 9, 8);
+        
+        // Finnish Cross (Blue) - Adjusted for new torso height
+        ctx.fillStyle = '#0277bd'; 
+        ctx.fillRect(-4.5, -3, 9, 2);  // Horizontal (Chest)
+        ctx.fillRect(-1.5, -6, 2, 8);  // Vertical (Center-Left)
+
+        // Micro-Outline
+        ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-4.5, -6, 9, 8);
+
+        // 3. ARMS (Longer & Higher - Matches Nicolas)
+        ctx.fillStyle = '#fff'; 
+        
+        // Left Sleeve
+        ctx.fillRect(-6.5, -5, 1.5, 5); 
+        ctx.strokeRect(-6.5, -5, 1.5, 5); // Outline
+        
+        // Right Sleeve
+        ctx.fillRect(5, -5, 1.5, 5);
+        ctx.strokeRect(5, -5, 1.5, 5);    // Outline
+
+        // Hands (Skin)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 0, 1.5, 2); 
+        ctx.fillRect(5, 0, 1.5, 2);
+
+        // 4. HEAD (Higher: Starts at y=-12)
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -12, 6, 6);
+
+        // 5. HAIR (Blonde)
+        ctx.fillStyle = '#fdd835'; 
+        ctx.fillRect(-4, -14, 8, 3); // Top
+        ctx.fillRect(-4, -11, 1, 3); // Side L
+        ctx.fillRect(3, -11, 1, 3);  // Side R
+
+        // Eyes
+        ctx.fillStyle = '#29b6f6'; 
+        ctx.fillRect(-2, -10, 1, 1); 
+        ctx.fillRect(1, -10, 1, 1);
+    }
+
+
+
+
+// --- SUKIE (Mid-Bob, Brown Glasses, Purple Jacket + Red Tee) ---
+    else if(n.name === "Sukie") {
+        // 1. LEGS (Classic Blue Jeans)
+        ctx.fillStyle = '#1976d2'; 
+        ctx.fillRect(-3.5, 6, 3, 5); // Left
+        ctx.fillRect(0.5, 6, 3, 5);  // Right
+
+        // Shoes (Grey Sneakers)
+        ctx.fillStyle = '#9e9e9e'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. INNER BODY (Brick Red T-Shirt)
+        ctx.fillStyle = '#c62828'; // Brick Red
+        ctx.fillRect(-2, -2, 4, 8); 
+
+        // 3. JACKET (Light Purple - Open Front)
+        ctx.fillStyle = '#d1c4e9'; // Lavender/Light Purple
+        
+        // Left Panel (Slightly longer than shirt)
+        ctx.fillRect(-5, -2, 3, 9); 
+        // Right Panel
+        ctx.fillRect(2, -2, 3, 9);
+
+        // Micro-Outline (Darker Purple)
+        ctx.strokeStyle = '#9575cd'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-5, -2, 3, 9);
+        ctx.strokeRect(2, -2, 3, 9);
+
+        // 4. ARMS (Jacket Sleeves - 1.5px Width)
+        ctx.fillStyle = '#d1c4e9'; 
+        
+        // Left Sleeve
+        ctx.fillRect(-6.5, -1, 1.5, 4); 
+        ctx.strokeRect(-6.5, -1, 1.5, 4); // Outline
+        
+        // Right Sleeve
+        ctx.fillRect(5, -1, 1.5, 4);
+        ctx.strokeRect(5, -1, 1.5, 4);    // Outline
+
+        // Hands (Skin)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 3, 1.5, 2); 
+        ctx.fillRect(5, 3, 1.5, 2);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 6. GLASSES (Brown Frames)
+        ctx.strokeStyle = '#5d4037'; ctx.lineWidth = 0.5; // Brown
+        // Lenses
+        ctx.strokeRect(-2.5, -5, 2, 1.5);
+        ctx.strokeRect(0.5, -5, 2, 1.5);
+        // Bridge
+        ctx.beginPath(); ctx.moveTo(-0.5, -4.5); ctx.lineTo(0.5, -4.5); ctx.stroke();
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+
+        // 7. HAIR (Mid-Length Bob - Dark Brown)
+        ctx.fillStyle = '#3e2723'; 
+        
+        // Top Volume
+        ctx.fillRect(-4, -9, 8, 2);
+        
+        // Bob Sides (Extends down to y=-3, covering ears/jaw)
+        ctx.fillRect(-5, -7, 2, 5); // Left Side
+        ctx.fillRect(3, -7, 2, 5);  // Right Side
+        
+        // Bangs (Straight across)
+        ctx.fillRect(-3, -7, 6, 1.5);
+    }
+
+
+
+
+
+
+
+// --- A GAN (Chic Mom - Cute Proportions) ---
+    else if(n.name === "A Gan") {
+        // 1. LEGS (Short 5px - Denim)
+        ctx.fillStyle = '#1565c0'; // Denim Blue
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
+        
+        // Cuffs (Light Blue)
+        ctx.fillStyle = '#90caf9'; 
+        ctx.fillRect(-3.5, 10, 3, 1); 
+        ctx.fillRect(0.5, 10, 3, 1);
+
+        // Sneakers (White)
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. BODY (Striped Top)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-4.5, -2, 9, 8);
+        
+        // Stripes (Dark Grey lines)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-4.5, 0, 9, 1);
+        ctx.fillRect(-4.5, 2, 9, 1);
+        ctx.fillRect(-4.5, 4, 9, 1);
+
+        // 3. RIGHT ARM (Holding Orange - Thin 1.5px)
+        // Sleeve
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(4.5, -1, 1.5, 3);
+        ctx.fillStyle = '#212121'; ctx.fillRect(4.5, 1, 1.5, 1); // Stripe on sleeve
+        
+        // Arm
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(4.5, 2, 1.5, 3);
+        
+        // Orange
+        ctx.fillStyle = '#ff6d00'; 
+        ctx.beginPath(); ctx.arc(5.25, 5.5, 2, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#43a047'; ctx.fillRect(5, 4, 1, 1); // Tiny Leaf
+
+        // 4. LEFT ARM & BABY (Tiny Hip Carry)
+        // Sleeve
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-6, -1, 1.5, 3);
+        ctx.fillStyle = '#212121'; ctx.fillRect(-6, 1, 1.5, 1);
+
+        // Forearm (Hooked under baby)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6, 2, 1.5, 3); // Down
+        ctx.fillRect(-6, 4.5, 4, 1.5); // Across
+
+        // BABY (Tiny Bundle)
+        ctx.fillStyle = '#81d4fa'; // Light Blue Blanket
+        ctx.beginPath(); ctx.ellipse(-4, 3.5, 3.5, 2.5, -0.4, 0, Math.PI*2); ctx.fill();
+        
+        // Baby Head
+        ctx.fillStyle = '#ffe0b2'; 
+        ctx.beginPath(); ctx.arc(-5, 2, 1.8, 0, Math.PI*2); ctx.fill();
+        
+        // Baby Face (Tiny dots)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-5.5, 1.5, 0.5, 0.5); 
+        ctx.fillRect(-4.5, 1.5, 0.5, 0.5);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Dark Brown Bob)
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-5, -8, 2, 7); // Left Side
+        ctx.fillRect(3, -8, 2, 7);  // Right Side
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+
+   // --- JOSH (Hiker/Photographer - Ponytail & Cute Proportions) ---
+    else if(n.name === "Josh") {
+        // 0. BACKPACK (Brown)
+        ctx.fillStyle = '#5d4037'; 
+        ctx.fillRect(-5, -3, 10, 8);
+
+        // 1. LEGS (Short 5px)
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
+        
+        // Khaki Shorts
+        ctx.fillStyle = '#8d6e63'; 
+        ctx.fillRect(-3.5, 6, 3.5, 3); 
+        ctx.fillRect(0, 6, 3.5, 3);
+
+        // Sneakers
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. BODY (Two-Tone Shirt)
+        ctx.fillStyle = '#37474f'; // Dark Blue-Grey Body
+        ctx.fillRect(-4.5, -2, 9, 8);
+
+        // 3. ARMS (Thin 1.5px)
+        ctx.fillStyle = '#78909c'; // Lighter Grey Sleeves
+        ctx.fillRect(-6.5, -1, 1.5, 3); 
+        ctx.fillRect(5, -1, 1.5, 3);
+        
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 2, 1.5, 3); 
+        ctx.fillRect(5, 2, 1.5, 3);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // HAIR (Blonde Ponytail Style)
+        ctx.fillStyle = '#fdd835'; 
+        
+        // Top Mass (Swept back)
+        ctx.beginPath();
+        ctx.moveTo(-4, -7);
+        ctx.lineTo(-4, -9); // Left hairline
+        ctx.quadraticCurveTo(0, -10, 4, -9); // Top curve
+        ctx.lineTo(4, -7); // Right hairline
+        ctx.fill();
+        
+        // The Ponytail (Sweeping out and down)
+        ctx.beginPath();
+        ctx.moveTo(2, -8); // Start at back right
+        ctx.quadraticCurveTo(7, -8, 6, -4); // Curve out and drop down
+        ctx.lineTo(4, -4); // Tip thickness
+        ctx.quadraticCurveTo(5, -7, 2, -7); // Return to head
+        ctx.fill();
+        
+        // Sideburns (Fade)
+        ctx.fillStyle = '#fbc02d'; 
+        ctx.fillRect(-4, -7, 1, 2); 
+        ctx.fillRect(3, -7, 1, 2);
+
+        // Goatee
+        ctx.fillStyle = '#fbc02d'; 
+        ctx.fillRect(-1, -2, 2, 1.5);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+
+        // 5. CAMERA (Hanging around neck)
+        ctx.fillStyle = '#111'; // Body
+        ctx.fillRect(-2, 2, 4, 3);
+        ctx.fillStyle = '#cfd8dc'; // Lens ring
+        ctx.beginPath(); ctx.arc(0, 3.5, 1.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#111'; // Lens glass
+        ctx.beginPath(); ctx.arc(0, 3.5, 0.5, 0, Math.PI*2); ctx.fill();
+        
+        // Strap
+        ctx.strokeStyle = '#263238'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(-2, 2); ctx.lineTo(-3, -1); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(2, 2); ctx.lineTo(3, -1); ctx.stroke();
+    }
+
+   // --- PAULINE (Sporty/Hiker - Cute Proportions) ---
+    else if(n.name === "Pauline") {
+        // 0. BACKPACK (Red - Scaled down)
+        ctx.fillStyle = '#c62828'; 
+        ctx.fillRect(-5, -3, 10, 8); // Slightly smaller to fit compact body
+
+        // 1. LEGS (Short 5px - Black Leggings)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
+        
+        // Side Stripe (Cyan)
+        ctx.fillStyle = '#4dd0e1'; 
+        ctx.fillRect(-3.5, 6, 1, 5); 
+        ctx.fillRect(2.5, 6, 1, 5);
+
+        // Sneakers (White)
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. BODY (Cyan Vest/Torso)
+        ctx.fillStyle = '#00838f'; // Dark Cyan
+        ctx.fillRect(-4.5, -2, 9, 8);
+        
+        // Zipper Line
+        ctx.fillStyle = '#006064'; 
+        ctx.fillRect(-0.5, -2, 1, 8);
+
+        // 3. ARMS (Thin 1.5px - Long Sleeves)
+        ctx.fillStyle = '#4dd0e1'; // Light Cyan Sleeves
+        ctx.fillRect(-6, -1, 1.5, 5); // Left
+        ctx.fillRect(4.5, -1, 1.5, 5); // Right
+
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6, 4, 1.5, 2); 
+        ctx.fillRect(4.5, 4, 1.5, 2);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
+        // Hair (Blonde Ponytail)
+        ctx.fillStyle = '#fff176'; 
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-5, -8, 2, 6); // Sides
+        
+        // Ponytail (Bouncy)
+        ctx.beginPath(); 
+        ctx.moveTo(4, -8); 
+        ctx.quadraticCurveTo(9, -6, 7, 0); 
+        ctx.lineTo(5, -2); 
+        ctx.fill();
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
         ctx.fillRect(-2, -5, 1, 1); 
         ctx.fillRect(1, -5, 1, 1);
     }
@@ -8992,247 +9806,50 @@ if(n.name === "Shummi") {
 
 
 
-    // --- JUSSI (Finnish Guy) ---
-    else if(n.name === "Jussi") {
-        ctx.fillStyle = '#263238'; ctx.fillRect(-4, 6, 3.5, 9); ctx.fillRect(0.5, 6, 3.5, 9); // Legs
-        ctx.fillStyle = '#fff'; ctx.fillRect(-5, -2, 10, 9); // Body
-        ctx.fillStyle = '#0277bd'; ctx.fillRect(-5, 1, 10, 2); ctx.fillRect(-2, -2, 2, 9); // Cross
-        ctx.fillStyle = '#fff'; ctx.fillRect(-7, -1, 2, 7); ctx.fillRect(5, -1, 2, 7); // Arms
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6); // Head
-        ctx.fillStyle = '#fdd835'; ctx.fillRect(-4, -9, 8, 3); ctx.fillRect(-4, -6, 1, 3); ctx.fillRect(3, -6, 1, 3); // Blonde
-        ctx.fillStyle = '#29b6f6'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1); // Blue Eyes
-    }
-
-
-
-
-
-
-
-
-// --- A GAN (Chic Mom - Striped Top, Jeans, Low Baby) ---
-    else if(n.name === "A Gan") {
-        // 1. LEGS (Slim Fit Blue Jeans)
-        ctx.fillStyle = '#1565c0'; // Classic Denim
-        ctx.fillRect(-3.5, 6, 3, 9); // Left
-        ctx.fillRect(0.5, 6, 3, 9);  // Right
-        
-        // Cuffed hems
-        ctx.fillStyle = '#90caf9'; // Light blue inside denim
-        ctx.fillRect(-3.5, 14, 3, 1); ctx.fillRect(0.5, 14, 3, 1);
-
-        // White Sneakers
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
-
-        // 2. BODY (Breton Striped Top)
-        ctx.fillStyle = '#fff'; // White Base
-        ctx.fillRect(-4.5, -2, 9, 9); 
-        
-        // Black Horizontal Stripes
-        ctx.fillStyle = '#212121'; 
-        ctx.fillRect(-4.5, -1, 9, 1);
-        ctx.fillRect(-4.5, 1, 9, 1);
-        ctx.fillRect(-4.5, 3, 9, 1);
-        ctx.fillRect(-4.5, 5, 9, 1);
-
-        // 3. HEAD (Full Bob Intact)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        ctx.fillStyle = '#3e2723'; // Dark Hair
-        ctx.fillRect(-4, -9, 8, 3); // Top Bangs
-        ctx.fillRect(-5, -8, 2, 7); // Left Side
-        ctx.fillRect(3, -8, 2, 7);  // Right Side
-
-        // 4. RIGHT ARM (Holding Orange - Striped Sleeve)
-        // Sleeve Base
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(4.5, -1, 2.5, 7); 
-        // Sleeve Stripes
-        ctx.fillStyle = '#212121';
-        ctx.fillRect(4.5, -1, 2.5, 1); ctx.fillRect(4.5, 1, 2.5, 1);
-        ctx.fillRect(4.5, 3, 2.5, 1);  ctx.fillRect(4.5, 5, 2.5, 1);
-        
-        // Hand
-        ctx.fillStyle = skinColor; 
-        ctx.fillRect(4.5, 6, 2.5, 2);
-        
-        // Orange
-        ctx.fillStyle = '#ff6d00'; 
-        ctx.beginPath(); ctx.arc(6, 7, 2.5, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#43a047'; ctx.fillRect(6, 5, 1, 1);
-
-        // 5. LEFT ARM & BABY (Lowered)
-        // Sleeve Base
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(-7, -1, 2.5, 5); 
-        // Sleeve Stripes
-        ctx.fillStyle = '#212121';
-        ctx.fillRect(-7, -1, 2.5, 1); ctx.fillRect(-7, 1, 2.5, 1); ctx.fillRect(-7, 3, 2.5, 1);
-
-        // Forearm (Holding baby)
-        ctx.fillStyle = '#fff'; // Sleeve continues
-        ctx.fillRect(-7, 4, 6, 2.5);
-        ctx.fillStyle = '#212121'; // Stripe on forearm
-        ctx.fillRect(-7, 5, 4, 1);
-
-        // BABY (Positioned low)
-        // Blanket
-        ctx.fillStyle = '#81d4fa'; // Light Blue Blanket (Pop color)
-        ctx.beginPath(); ctx.ellipse(-4, 4, 3.5, 4, -0.4, 0, Math.PI*2); ctx.fill();
-
-        // Baby Head
-        ctx.fillStyle = '#ffe0b2'; 
-        ctx.beginPath(); ctx.arc(-5, 2, 2.8, 0, Math.PI*2); ctx.fill();
-        
-        // Baby Face
-        ctx.fillStyle = '#111';
-        ctx.fillRect(-6, 1.5, 1, 1); ctx.fillRect(-4, 1.5, 1, 1);
-    }
-
-
-
-
-
-   // --- JOSH (Hiker - Two-Tone Shirt to separate arms) ---
-    else if(n.name === "Josh") {
-        // 0. BACKPACK
-        ctx.fillStyle = '#5d4037'; ctx.fillRect(-6, -4, 12, 10); 
-
-        // 1. LEGS (Hiking Shorts)
-        ctx.fillStyle = skinColor; 
-        ctx.fillRect(-3.5, 6, 3, 9); ctx.fillRect(0.5, 6, 3, 9);
-        // Khaki Shorts
-        ctx.fillStyle = '#8d6e63'; 
-        ctx.fillRect(-4, 6, 3.5, 5); ctx.fillRect(0.5, 6, 3.5, 5);
-        // Sneakers
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-4, 14, 3.5, 1.5); ctx.fillRect(0.5, 14, 3.5, 1.5);
-
-        // 2. BODY (Darker Core)
-        ctx.fillStyle = '#37474f'; // Dark Blue-Grey Torso
-        ctx.fillRect(-5, -2, 10, 9); 
-
-        // 3. ARMS (Lighter Sleeves - Contrast)
-        ctx.fillStyle = '#78909c'; // Lighter Blue-Grey Sleeves
-        ctx.fillRect(-8, -1, 3, 7); // Left Sleeve (Wider separation)
-        ctx.fillRect(5, -1, 3, 7);  // Right Sleeve
-        
-        // Seam Lines (To distinctly separate body from arm)
-        ctx.fillStyle = '#263238'; 
-        ctx.fillRect(-5, -1, 1, 7); // Left Seam
-        ctx.fillRect(4, -1, 1, 7);  // Right Seam
-
-        // Hands
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-8, 6, 3, 2); ctx.fillRect(5, 6, 3, 2);
-
-        // 4. HEAD
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        ctx.fillStyle = '#fdd835'; // Blonde
-        ctx.fillRect(-4, -9, 8, 3); 
-        ctx.beginPath(); ctx.arc(0, -10, 2.5, 0, 6.28); ctx.fill(); // Bun
-        ctx.fillStyle = '#fbc02d'; ctx.fillRect(-1, -1, 2, 2); // Goatee
-
-        // Camera
-        ctx.fillStyle = '#000'; ctx.fillRect(1, 3, 4, 3);
-        ctx.strokeStyle = '#90a4ae'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(1, 3); ctx.lineTo(-3, -2); ctx.stroke();
-    }
-
-   // --- PAULINE (Long Leggings & Long Sleeves) ---
-    else if(n.name === "Pauline") {
-        // 0. BACKPACK
-        ctx.fillStyle = '#c62828'; // Red Bag
-        ctx.fillRect(-5, -4, 10, 9);
-
-        // 1. LEGS (Long Black Leggings)
-        ctx.fillStyle = '#212121'; // Black Pants
-        ctx.fillRect(-3.5, 6, 3, 9); // Left Leg full length
-        ctx.fillRect(0.5, 6, 3, 9);  // Right Leg full length
-        
-        // Side Stripe (Sporty Detail)
-        ctx.fillStyle = '#4dd0e1'; // Matches shirt
-        ctx.fillRect(-3.5, 6, 0.5, 9); 
-        ctx.fillRect(3, 6, 0.5, 9);
-
-        // Sneakers
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
-
-        // 2. BODY (Darker Cyan Vest/Torso)
-        ctx.fillStyle = '#00838f'; // Dark Cyan
-        ctx.fillRect(-4, -1, 8, 8);
-        
-        // Zipper Line
-        ctx.fillStyle = '#006064'; 
-        ctx.fillRect(-0.5, -1, 1, 8);
-
-        // 3. ARMS (Lighter Long Sleeves - High Contrast)
-        ctx.fillStyle = '#4dd0e1'; // Light Cyan
-        ctx.fillRect(-7, -1, 3, 7); // Left Sleeve
-        ctx.fillRect(4, -1, 3, 7);  // Right Sleeve
-
-        // Armpit Gap/Shadow to separate
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.fillRect(-4, -1, 1, 4); 
-        ctx.fillRect(3, -1, 1, 4);
-
-        // Hands
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 6, 3, 2); ctx.fillRect(4, 6, 3, 2);
-
-        // 4. HEAD (Ponytail)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        ctx.fillStyle = '#fff176'; // Blonde
-        ctx.fillRect(-4, -9, 8, 4); 
-        // Ponytail
-        ctx.beginPath(); ctx.moveTo(4, -8); ctx.quadraticCurveTo(9, -6, 7, 1); ctx.lineTo(5, 0); ctx.fill();
-    }
-
-
-
-
-
-    // --- ANGUS (Fashion Dude - No Hood, Khaki Pants) ---
+   // --- ANGUS (Fashion/Hoodie - Cute Proportions) ---
     else if(n.name === "Angus") {
-        // 1. LEGS (Khaki Cargo Pants - High Contrast)
+        // 1. LEGS (Short 5px - Khaki Cargos)
         ctx.fillStyle = '#d7ccc8'; // Light Beige/Khaki
-        ctx.fillRect(-4, 6, 3.5, 8); 
-        ctx.fillRect(0.5, 6, 3.5, 8);
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
         
         // Chunky White Sneakers
         ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-4.5, 14, 4, 1.5); ctx.fillRect(0.5, 14, 4, 1.5);
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
 
-        // 2. BODY (Black Hoodie/Sweatshirt)
+        // 2. BODY (Black Hoodie)
         ctx.fillStyle = '#212121'; // Black
-        ctx.fillRect(-5.5, -2, 11, 10); // Oversized fit
+        ctx.fillRect(-4.5, -2, 9, 8); 
         
         // Kangaroo Pocket (Dark Grey)
         ctx.fillStyle = '#424242'; 
         ctx.beginPath(); 
-        ctx.moveTo(-3, 8); ctx.lineTo(3, 8); 
-        ctx.lineTo(4, 4); ctx.lineTo(-4, 4); 
+        ctx.moveTo(-2.5, 6); ctx.lineTo(2.5, 6); 
+        ctx.lineTo(3.5, 3); ctx.lineTo(-3.5, 3); 
         ctx.fill();
 
-        // White Drawstrings (To show it is a hoodie)
+        // White Drawstrings
         ctx.fillStyle = '#eee';
-        ctx.fillRect(-2, 0, 0.5, 4); 
-        ctx.fillRect(1.5, 0, 0.5, 4);
+        ctx.fillRect(-1.5, 0, 0.5, 3); 
+        ctx.fillRect(1, 0, 0.5, 3);
 
-        // 3. ARMS (Long Sleeves)
+        // 3. ARMS (Thin 1.5px - Long Sleeves)
         ctx.fillStyle = '#212121'; 
-        ctx.fillRect(-7.5, -1, 2, 7); ctx.fillRect(5.5, -1, 2, 7);
+        ctx.fillRect(-6.5, -1, 1.5, 5); // Left
+        ctx.fillRect(5, -1, 1.5, 5);    // Right
+        
         // Hands poking out
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-7.5, 6, 2, 1); ctx.fillRect(5.5, 6, 2, 1);
+        ctx.fillRect(-6.5, 4, 1.5, 1); 
+        ctx.fillRect(5, 4, 1.5, 1);
 
         // 4. HEAD
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
         
         // HAIR (Light Gray Buzz Cut)
         ctx.fillStyle = '#e0e0e0'; // Very Light Gray
-        ctx.fillRect(-3, -9, 6, 2); // Short top
+        ctx.fillRect(-3, -9, 6, 2); // Short top cap
         
         // EYES
         ctx.fillStyle = '#111';
@@ -9247,53 +9864,60 @@ if(n.name === "Shummi") {
 
 
 
-// --- FANG (The Reader - Shirt, Glasses, Book) ---
+// --- FANG (The Reader - Cute Proportions + Eyes) ---
     else if(n.name === "Fang") {
-        // 1. LEGS (Smart Trousers)
+        // 1. LEGS (Short 5px - Smart Trousers)
         ctx.fillStyle = '#455a64'; // Dark Slate Grey
-        ctx.fillRect(-3.5, 6, 3, 9); // Left
-        ctx.fillRect(0.5, 6, 3, 9);  // Right
+        ctx.fillRect(-3.5, 6, 3, 5); 
+        ctx.fillRect(0.5, 6, 3, 5);
         
         // Shoes
         ctx.fillStyle = '#111'; 
-        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
 
-        // 2. BODY (Button-Up Oxford Shirt)
+        // 2. BODY (Oxford Shirt)
         ctx.fillStyle = '#e3f2fd'; // Pale Blue
-        ctx.fillRect(-5, -2, 10, 9);
+        ctx.fillRect(-4.5, -2, 9, 8);
         
-        // Button Placket (Center strip)
+        // Button Placket
         ctx.fillStyle = '#bbdefb';
-        ctx.fillRect(-0.5, -2, 1, 9);
+        ctx.fillRect(-0.5, -2, 1, 8);
         
         // White Collar
         ctx.fillStyle = '#fff';
-        ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(-4, -1); ctx.lineTo(-2, 0); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(4, -1); ctx.lineTo(2, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(-1.5, -2); ctx.lineTo(-3.5, -1); ctx.lineTo(-1.5, 0); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(1.5, -2); ctx.lineTo(3.5, -1); ctx.lineTo(1.5, 0); ctx.fill();
 
         // 3. ARMS & BOOK
         ctx.fillStyle = '#e3f2fd'; // Sleeves
-        ctx.fillRect(-7, -1, 2, 6); // Left Arm (Down)
-        ctx.fillRect(5, -1, 2, 4);  // Right Arm (Bent up holding book)
+        
+        // Left Arm (Down)
+        ctx.fillRect(-6.5, -1, 1.5, 4); 
+        ctx.fillStyle = skinColor; ctx.fillRect(-6.5, 3, 1.5, 2); // Left Hand
 
-        // Hands
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 5, 2, 2);
-        ctx.fillRect(5, 3, 2, 2);
+        // Right Arm (Bent up holding book)
+        ctx.fillStyle = '#e3f2fd';
+        ctx.fillRect(5, -1, 1.5, 3); 
+        ctx.fillStyle = skinColor; ctx.fillRect(5, 2, 1.5, 2); // Right Hand
 
-        // THE BOOK (Held in Right Hand)
+        // THE BOOK (Held in Right Hand - Scaled down)
         ctx.fillStyle = '#5d4037'; // Leather Cover
-        ctx.fillRect(3, 1, 6, 5);
+        ctx.fillRect(3.5, 1, 4, 5);
         ctx.fillStyle = '#fff'; // Pages
-        ctx.fillRect(3.5, 1.5, 5, 4);
-        // Text lines detail
+        ctx.fillRect(4, 1.5, 3, 4);
+        // Text lines
         ctx.fillStyle = '#999';
-        ctx.fillRect(4, 2.5, 4, 0.5); 
-        ctx.fillRect(4, 3.5, 4, 0.5); 
-        ctx.fillRect(4, 4.5, 4, 0.5);
+        ctx.fillRect(4.5, 2.5, 2, 0.5); 
+        ctx.fillRect(4.5, 3.5, 2, 0.5);
 
         // 4. HEAD
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // Eyes (Added Here)
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
 
         // Hair (Neat Side Part)
         ctx.fillStyle = '#1a1a1a';
@@ -9301,7 +9925,7 @@ if(n.name === "Shummi") {
         ctx.fillRect(-4, -6, 1, 2); // Side
         ctx.fillRect(3, -6, 1, 2);  // Side
 
-        // GLASSES (Black Rectangular Frames)
+        // GLASSES (Fine Detail)
         ctx.strokeStyle = '#111'; ctx.lineWidth = 0.5;
         // Left Lens
         ctx.strokeRect(-2.5, -5, 2, 1.5);
@@ -9312,217 +9936,129 @@ if(n.name === "Shummi") {
     }
 
 
-
-
-
-// --- AVON (Navy Maxi Skirt, Textured Top, Ponytail) ---
+// --- AVON (B&W Striped Long Sleeve, Long Skirt, Glasses) ---
     else if(n.name === "Avon") {
-        // 1. LEGS (Visible at bottom)
+        // 1. LEGS (Mostly hidden by skirt)
         ctx.fillStyle = skinColor; 
-        ctx.fillRect(-3, 13, 2.5, 3); ctx.fillRect(0.5, 13, 2.5, 3);
+        ctx.fillRect(-3, 6, 2.5, 5); 
+        ctx.fillRect(0.5, 6, 2.5, 5);
         
         // Flats (Black)
         ctx.fillStyle = '#111'; 
-        ctx.fillRect(-3.5, 15, 3, 1); ctx.fillRect(0.5, 15, 3, 1);
+        ctx.fillRect(-3.5, 11, 3, 1.5); ctx.fillRect(0.5, 11, 3, 1.5);
 
-        // 2. SKIRT (Navy Maxi - Extra Long)
-        ctx.fillStyle = '#1a237e'; // Deep Navy
+        // 2. SKIRT (Navy Maxi - High Waisted)
+        ctx.fillStyle = '#1a237e'; // Navy
         ctx.beginPath();
-        ctx.moveTo(-4, 5); ctx.lineTo(4, 5);   // Waist
-        ctx.lineTo(8, 14); ctx.lineTo(-8, 14); // Hem (Ankle length)
+        ctx.moveTo(-3.5, 4); // High Waist (Starts at y=4)
+        ctx.lineTo(3.5, 4);
+        ctx.lineTo(6, 11);   // Hem (Ankle length)
+        ctx.lineTo(-6, 11);
         ctx.fill();
 
-        // 3. BODY (Detailed Ribbed Top)
+        // 3. BODY (B&W Striped Long Sleeve)
         ctx.fillStyle = '#fff'; // White Base
-        ctx.fillRect(-4.5, -2, 9, 7); 
+        ctx.fillRect(-4.5, -2, 9, 6); // Tucked into skirt
         
-        // Texture: Vertical Ribbing (Light Grey lines)
-        ctx.fillStyle = '#e0e0e0'; 
-        ctx.fillRect(-2.5, -2, 0.5, 7);
-        ctx.fillRect(0, -2, 0.5, 7);
-        ctx.fillRect(2.5, -2, 0.5, 7);
+        // Black Horizontal Stripes
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-4.5, -1, 9, 1);
+        ctx.fillRect(-4.5, 1, 9, 1);
+        ctx.fillRect(-4.5, 3, 9, 1);
 
-        // Neckline Detail
-        ctx.strokeStyle = '#bdbdbd'; ctx.lineWidth = 0.5;
-        ctx.beginPath(); ctx.arc(0, -2, 2.5, 0, Math.PI); ctx.stroke();
+        // 4. ARMS (Long Sleeves with Stripes)
+        // Left Sleeve
+        ctx.fillStyle = '#fff'; ctx.fillRect(-6, -1, 1.5, 5); 
+        ctx.fillStyle = '#111'; // Stripes
+        ctx.fillRect(-6, -1, 1.5, 1); ctx.fillRect(-6, 1, 1.5, 1); ctx.fillRect(-6, 3, 1.5, 1);
 
-        // 4. ARMS (Short Sleeves)
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-7, -1, 2, 3); ctx.fillRect(5, -1, 2, 3);
-        
-        // Skin Arms
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 2, 2, 5); ctx.fillRect(5, 2, 2, 5);
-
-        // 5. HEAD (Ponytail)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        ctx.fillStyle = '#4e342e'; // Dark Brown Hair
-        ctx.fillRect(-4, -9, 8, 4); 
-        // Ponytail
-        ctx.beginPath(); ctx.moveTo(4, -6); ctx.quadraticCurveTo(8, -2, 6, 4); ctx.lineTo(4, 2); ctx.fill();
-    }
-
-    // --- SHARON (Coat, Shirt, Visible Legs) ---
-    else if(n.name === "Sharon") {
-        // 1. LEGS (Clearly Visible now)
-        ctx.fillStyle = '#37474f'; // Dark Tights/Stockings
-        ctx.fillRect(-3, 11, 2.5, 5); 
-        ctx.fillRect(0.5, 11, 2.5, 5);
-        
-        // Boots
-        ctx.fillStyle = '#000'; 
-        ctx.fillRect(-3.5, 14.5, 3, 1.5); ctx.fillRect(0.5, 14.5, 3, 1.5);
-
-        // 2. SKIRT (Dark Grey - Slightly shorter to show legs)
-        ctx.fillStyle = '#424242'; 
-        ctx.beginPath();
-        ctx.moveTo(-4, 5); ctx.lineTo(4, 5);
-        ctx.lineTo(6.5, 12); ctx.lineTo(-6.5, 12); // Ends at calf
-        ctx.fill();
-
-        // 3. BODY (Patterned Shirt)
-        ctx.fillStyle = '#e0f7fa'; // Light Blue base
-        ctx.fillRect(-4, -2, 8, 7);
-        // Detail: Buttons & Collar
-        ctx.fillStyle = '#006064'; 
-        ctx.fillRect(-0.5, -2, 1, 7); 
-        ctx.beginPath(); ctx.moveTo(-2, -2); ctx.lineTo(-4, -1); ctx.lineTo(-2, 0); ctx.fill();
-        ctx.beginPath(); ctx.moveTo(2, -2); ctx.lineTo(4, -1); ctx.lineTo(2, 0); ctx.fill();
-
-        // 4. COAT (Open Camel Coat)
-        ctx.fillStyle = '#d7ccc8'; 
-        ctx.fillRect(-6, -2, 2.5, 11); // Left Panel
-        ctx.fillRect(3.5, -2, 2.5, 11); // Right Panel
-
-        // 5. ARMS (Coat Sleeves)
-        ctx.fillStyle = '#d7ccc8'; 
-        ctx.fillRect(-7.5, -1, 2, 7); 
-        ctx.fillRect(5.5, -1, 2, 7);
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-7.5, 6, 2, 2); ctx.fillRect(5.5, 6, 2, 2);
-
-        // 6. HEAD (Long Hair)
-        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
-        ctx.fillStyle = '#111'; // Black Hair
-        ctx.fillRect(-4, -9, 8, 3); 
-        ctx.fillRect(-5, -6, 2, 8); 
-        ctx.fillRect(3, -6, 2, 8);
-    }
-
-
-
-
-
-
-// --- TOMO CHIU (Chunky Rapper - Short & Stout) ---
-    else if(n.name === "Tomo Chiu") {
-        // 1. LEGS (Short & Baggy)
-        ctx.fillStyle = '#1565c0'; // Blue Denim
-        ctx.fillRect(-4, 6, 3.5, 5); // Left (Shortened height from 8 -> 5)
-        ctx.fillRect(0.5, 6, 3.5, 5);  // Right
-        
-        // High Top Sneakers (Moved up due to shorter legs)
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-4.5, 11, 4, 2); ctx.fillRect(0.5, 11, 4, 2);
-        ctx.fillStyle = '#d32f2f'; // Red detail
-        ctx.fillRect(-3.5, 11, 2, 2); ctx.fillRect(1.5, 11, 2, 2);
-
-        // 2. BODY (Hoodie - Wide)
-        ctx.fillStyle = '#d32f2f'; // Red Hoodie
-        ctx.fillRect(-5, -2, 10, 9); 
-        
-        // Kangaroo Pocket
-        ctx.fillStyle = '#b71c1c'; 
-        ctx.beginPath(); 
-        ctx.moveTo(-3, 7); ctx.lineTo(3, 7); 
-        ctx.lineTo(4, 4); ctx.lineTo(-4, 4); 
-        ctx.fill();
-
-        // 3. BLING (Gold Chain)
-        ctx.strokeStyle = '#ffd700'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(0, -2, 3, 0, Math.PI); ctx.stroke();
-
-        // 4. ARMS (Tucked)
-        ctx.fillStyle = '#d32f2f'; 
-        ctx.fillRect(-7, -1, 2, 6); // Left
-        ctx.fillRect(5, -1, 2, 6);  // Right
-        // Hands
-        ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 5, 2, 2); ctx.fillRect(5, 5, 2, 2);
-
-        // 5. HEAD (Round Face)
-        ctx.fillStyle = skinColor; 
-        ctx.beginPath(); ctx.arc(0, -6, 4, 0, 6.28); ctx.fill(); 
-        
-        // Face
-        ctx.fillStyle = '#111'; // Eyes
-        ctx.fillRect(-2, -6, 1, 1); ctx.fillRect(1, -6, 1, 1);
-        ctx.fillStyle = '#333'; // Stubble
-        ctx.fillRect(-1, -3, 2, 1);
-
-        // 6. HAT (Backwards Snapback)
-        ctx.fillStyle = '#212121'; 
-        ctx.beginPath(); ctx.arc(0, -8, 4.1, Math.PI, 0); ctx.fill();
-        ctx.fillRect(-4, -8, 8, 1.5); // Brim
-        ctx.fillStyle = '#424242';
-        ctx.fillRect(-2, -7, 4, 1); // Snap
-    }
-
-   // --- FU JING (Messi Fan - Jersey, Shorts over Leggings) ---
-    else if(n.name === "Fu Jing") {
-        // 1. LEGS (Black Leggings Underneath)
-        ctx.fillStyle = '#212121'; // Matte Black Leggings
-        ctx.fillRect(-3, 6, 2.5, 9); // Left Leg (Tight)
-        ctx.fillRect(0.5, 6, 2.5, 9);  // Right Leg (Tight)
-
-        // 2. SHORTS (Layered Over Leggings)
-        ctx.fillStyle = '#000'; // Pure Black Shorts
-        ctx.fillRect(-4, 6, 3.5, 5); // Left (Wider/Shorter)
-        ctx.fillRect(0.5, 6, 3.5, 5);  // Right
-
-        // Sport Shoes
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-3.5, 15, 3, 1.5); ctx.fillRect(0.5, 15, 3, 1.5);
-
-        // 3. BODY (Argentina Jersey: Stripes)
-        ctx.fillStyle = '#fff'; // White Base
-        ctx.fillRect(-5, -2, 10, 9);
-        
-        // Light Blue Vertical Stripes
-        ctx.fillStyle = '#4fc3f7'; // Argentina Blue
-        ctx.fillRect(-3, -2, 2, 9); 
-        ctx.fillRect(1, -2, 2, 9);
-
-        // NUMBER 10 (Black on Chest)
-        ctx.fillStyle = '#111';
-        // Draw "1"
-        ctx.fillRect(-1.5, 1, 1, 4); 
-        // Draw "0"
-        ctx.strokeStyle = '#111'; ctx.lineWidth = 1;
-        ctx.strokeRect(0.5, 1.5, 2, 3);
-
-        // 4. ARMS (Short Sleeves)
-        ctx.fillStyle = '#fff'; 
-        ctx.fillRect(-7, -1, 2, 4); ctx.fillRect(5, -1, 2, 4);
-        // Blue trim on sleeves
-        ctx.fillStyle = '#4fc3f7';
-        ctx.fillRect(-7, 2, 2, 1); ctx.fillRect(5, 2, 2, 1);
+        // Right Sleeve
+        ctx.fillStyle = '#fff'; ctx.fillRect(4.5, -1, 1.5, 5);
+        ctx.fillStyle = '#111'; // Stripes
+        ctx.fillRect(4.5, -1, 1.5, 1); ctx.fillRect(4.5, 1, 1.5, 1); ctx.fillRect(4.5, 3, 1.5, 1);
 
         // Hands
         ctx.fillStyle = skinColor;
-        ctx.fillRect(-7, 3, 2, 3); ctx.fillRect(5, 3, 2, 3);
+        ctx.fillRect(-6, 4, 1.5, 2); 
+        ctx.fillRect(4.5, 4, 1.5, 2);
 
         // 5. HEAD
         ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
         
-        // Hair (Short Black Sporty Cut)
-        ctx.fillStyle = '#1a1a1a';
-        ctx.fillRect(-4, -9, 8, 3); 
-        ctx.fillRect(-4, -6, 1, 2); ctx.fillRect(3, -6, 1, 2);
+        // Hair (Dark Brown Ponytail)
+        ctx.fillStyle = '#4e342e'; 
+        ctx.fillRect(-4, -9, 8, 4); 
+        // Ponytail
+        ctx.beginPath(); ctx.moveTo(4, -6); ctx.quadraticCurveTo(8, -2, 6, 4); ctx.lineTo(4, 2); ctx.fill();
 
+        // GLASSES (Black Wireframes)
+        ctx.strokeStyle = '#111'; ctx.lineWidth = 0.5;
+        // Lenses
+        ctx.strokeRect(-2.5, -5, 2, 1.5);
+        ctx.strokeRect(0.5, -5, 2, 1.5);
+        // Bridge
+        ctx.beginPath(); ctx.moveTo(-0.5, -4.5); ctx.lineTo(0.5, -4.5); ctx.stroke();
+
+        // EYES (Behind glasses)
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+
+    // --- SHARON (Coat/Tights - Cute Proportions) ---
+    else if(n.name === "Sharon") {
+        // 1. LEGS (Short 5px - Dark Tights)
+        ctx.fillStyle = '#37474f'; // Dark Grey Tights
+        ctx.fillRect(-3, 6, 2.5, 5); 
+        ctx.fillRect(0.5, 6, 2.5, 5);
+        
+        // Boots
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. SKIRT (Charcoal - Short)
+        ctx.fillStyle = '#424242'; 
+        ctx.fillRect(-4, 5, 8, 3);
+
+        // 3. BODY (Patterned Shirt)
+        ctx.fillStyle = '#e0f7fa'; // Light Blue base
+        ctx.fillRect(-4, -2, 8, 7);
+        // Button Placket
+        ctx.fillStyle = '#006064'; 
+        ctx.fillRect(-0.5, -2, 1, 7); 
+        
+        // 4. COAT (Camel - Open Front)
+        ctx.fillStyle = '#d7ccc8'; 
+        ctx.fillRect(-6, -2, 2, 9); // Left Panel
+        ctx.fillRect(4, -2, 2, 9);  // Right Panel
+
+        // 5. ARMS (Thin 1.5px - Coat Sleeves)
+        ctx.fillStyle = '#d7ccc8'; 
+        ctx.fillRect(-6.5, -1, 1.5, 5); // Left
+        ctx.fillRect(5, -1, 1.5, 5);    // Right
+        
+        // Hands
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 4, 1.5, 2); 
+        ctx.fillRect(5, 4, 1.5, 2);
+
+        // 6. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+        
         // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+
+        // Hair (Black Long)
         ctx.fillStyle = '#111'; 
-        ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+        ctx.fillRect(-4, -9, 8, 3); // Top
+        ctx.fillRect(-5, -6, 2, 8); // Left Side
+        ctx.fillRect(3, -6, 2, 8);  // Right Side
     }
 
 
@@ -9530,12 +10066,259 @@ if(n.name === "Shummi") {
 
 
 
+// --- DAPHNE (Elegant Pianist - Evening Gown & Sheet Music) ---
+    else if(n.name === "Daphne") {
+        // 1. LEGS (Mostly hidden by gown)
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-3, 6, 2.5, 5); 
+        ctx.fillRect(0.5, 6, 2.5, 5);
+        
+        // Heels (Black)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. DRESS (Midnight Blue Evening Gown)
+        let dressGrad = ctx.createLinearGradient(0, -2, 0, 12);
+        dressGrad.addColorStop(0, '#1a237e'); // Deep Blue top
+        dressGrad.addColorStop(1, '#3949ab'); // Slightly lighter hem
+        ctx.fillStyle = dressGrad;
+        
+        ctx.beginPath();
+        ctx.moveTo(-4.5, -2); // Top Left (Off shoulder)
+        ctx.lineTo(4.5, -2);  // Top Right
+        ctx.lineTo(8, 11);    // Flare Bottom Right
+        ctx.lineTo(-8, 11);   // Flare Bottom Left
+        ctx.fill();
+
+        // Sash (Silver/Light Blue)
+        ctx.fillStyle = '#9fa8da'; 
+        ctx.fillRect(-4, 4, 8, 2);
+
+        // 3. ARMS (Sleeveless/Skin - Thin 1.5px)
+        ctx.fillStyle = skinColor; 
+        ctx.fillRect(-6, -1, 1.5, 5); // Left Arm
+        ctx.fillRect(4.5, -1, 1.5, 5); // Right Arm
+
+        // 4. SHEET MUSIC (Held in Right Hand)
+        ctx.fillStyle = '#fff'; // Paper
+        ctx.fillRect(5, 2, 4, 5); 
+        // Musical Lines (Tiny details)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(6, 3, 2, 0.5);
+        ctx.fillRect(6, 4, 2, 0.5);
+        ctx.fillRect(6, 5, 2, 0.5);
+
+        // 5. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+
+     
+
+        // 6. HAIR (Elegant Brown Updo)
+        ctx.fillStyle = '#5d4037'; 
+        ctx.fillRect(-4, -9, 8, 3); // Top mass
+        ctx.fillRect(-5, -7, 2, 4); // Side curls
+        ctx.fillRect(3, -7, 2, 4);
+        
+        // The Bun (Top Knot)
+        ctx.beginPath(); ctx.arc(0, -9.5, 2.5, 0, Math.PI*2); ctx.fill();
+    }
+
+
+
+
+
+
+
+// --- PAM (Stylish Elder: Black Bob, Hat, Layers) ---
+    else if(n.name === "Pam") {
+        // 1. LEGS (Slim Black Trousers)
+        ctx.fillStyle = '#212121'; 
+        ctx.fillRect(-3.5, 6, 3, 5); // Left
+        ctx.fillRect(0.5, 6, 3, 5);  // Right
+
+        // Shoes (Stylish Dark Brown Loafers)
+        ctx.fillStyle = '#3e2723'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. INNER TOP (Deep Burgundy)
+        ctx.fillStyle = '#880e4f'; 
+        ctx.fillRect(-2, -2, 4, 8); 
+
+        // 3. OUTER CARDIGAN (Taupe/Beige - Open Front)
+        ctx.fillStyle = '#d7ccc8'; 
+        
+        // Left Panel (Drapes down)
+        ctx.fillRect(-5, -2, 3, 9); 
+        // Right Panel
+        ctx.fillRect(2, -2, 3, 9);
+
+        // Micro-Outline (Darker Beige)
+        ctx.strokeStyle = '#a1887f'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-5, -2, 3, 9);
+        ctx.strokeRect(2, -2, 3, 9);
+
+        // 4. NECKLACE (Statement Gold Pendant)
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-1, -1, 2, 2); 
+
+        // 5. ARMS (Cardigan Sleeves - 1.5px Width)
+        ctx.fillStyle = '#d7ccc8'; 
+        
+        // Left Sleeve
+        ctx.fillRect(-6.5, -1, 1.5, 4); 
+        ctx.strokeRect(-6.5, -1, 1.5, 4); // Outline
+        
+        // Right Sleeve
+        ctx.fillRect(5, -1, 1.5, 4);
+        ctx.strokeRect(5, -1, 1.5, 4);    // Outline
+
+        // Hands (Skin)
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 3, 1.5, 2); 
+        ctx.fillRect(5, 3, 1.5, 2);
+
+        // 6. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 7. HAIR (Dyed Black - Neat Mid-Bob)
+        ctx.fillStyle = '#1a1a1a'; 
+        // Side Bob (Visible under hat)
+        ctx.fillRect(-5, -7, 2, 4); // Left
+        ctx.fillRect(3, -7, 2, 4);  // Right
+
+        // 8. HAT (Wide Brim - Matches Cardigan)
+        // Brim
+        ctx.fillStyle = '#d7ccc8'; 
+        ctx.beginPath(); ctx.ellipse(0, -9, 8, 2.5, 0, 0, Math.PI*2); ctx.fill();
+        ctx.strokeStyle = '#a1887f'; ctx.lineWidth = 0.5; ctx.stroke(); 
+
+        // Dome
+        ctx.beginPath(); ctx.arc(0, -10, 4, Math.PI, 0); ctx.fill();
+
+        // Hat Band (Matches Blouse)
+        ctx.fillStyle = '#880e4f'; 
+        ctx.fillRect(-4, -10, 8, 1.5);
+
+        // 9. EARRINGS (Gold Dots)
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(-5, -5, 1, 1); 
+        ctx.fillRect(4, -5, 1, 1);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
+
+
+
+// --- BOHAN (Normal Dude: Grey Tee + Jeans + Messy Hair) ---
+    else if(n.name === "Bohan") {
+        // 1. LEGS (Classic Blue Jeans)
+        ctx.fillStyle = '#1565c0'; // Denim
+        ctx.fillRect(-3.5, 6, 3, 5); // Left
+        ctx.fillRect(0.5, 6, 3, 5);  // Right
+
+        // Shoes (White Sneakers)
+        ctx.fillStyle = '#fff'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. BODY (Grey T-Shirt)
+        ctx.fillStyle = '#78909c'; // Blue-Grey
+        ctx.fillRect(-4.5, -2, 9, 8); 
+        
+        // Micro-Outline
+        ctx.strokeStyle = '#546e7a'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-4.5, -2, 9, 8);
+
+        // 3. ARMS (Short Sleeves)
+        ctx.fillStyle = '#78909c'; // Sleeve
+        ctx.fillRect(-6.5, -1, 1.5, 3); // Left
+        ctx.fillRect(5, -1, 1.5, 3);    // Right
+        
+        // Skin Arms
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 2, 1.5, 3); 
+        ctx.fillRect(5, 2, 1.5, 3);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 5. HAIR (Casual Brown Messy)
+        ctx.fillStyle = '#4e342e'; 
+        ctx.fillRect(-4, -9, 8, 3); // Top mass
+        ctx.fillRect(-4, -6, 1, 2); // Sideburns
+        ctx.fillRect(3, -6, 1, 2);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+    // --- CORNI (Normal Dude: Green Tee + Khakis + Crew Cut) ---
+    else if(n.name === "Corni") {
+        // 1. LEGS (Khaki/Beige Chinos)
+        ctx.fillStyle = '#8d6e63'; // Khaki Brown
+        ctx.fillRect(-3.5, 6, 3, 5); // Left
+        ctx.fillRect(0.5, 6, 3, 5);  // Right
+
+        // Shoes (Black)
+        ctx.fillStyle = '#111'; 
+        ctx.fillRect(-3.5, 11, 3, 1.5); 
+        ctx.fillRect(0.5, 11, 3, 1.5);
+
+        // 2. BODY (Dark Green T-Shirt)
+        ctx.fillStyle = '#2e7d32'; // Forest Green
+        ctx.fillRect(-4.5, -2, 9, 8);
+        
+        // Micro-Outline
+        ctx.strokeStyle = '#1b5e20'; ctx.lineWidth = 0.5;
+        ctx.strokeRect(-4.5, -2, 9, 8);
+
+        // 3. ARMS (Short Sleeves)
+        ctx.fillStyle = '#2e7d32'; // Sleeve
+        ctx.fillRect(-6.5, -1, 1.5, 3); // Left
+        ctx.fillRect(5, -1, 1.5, 3);    // Right
+        
+        // Skin Arms
+        ctx.fillStyle = skinColor;
+        ctx.fillRect(-6.5, 2, 1.5, 3); 
+        ctx.fillRect(5, 2, 1.5, 3);
+
+        // 4. HEAD
+        ctx.fillStyle = skinColor; ctx.fillRect(-3, -7, 6, 6);
+
+        // 5. HAIR (Crew Cut / Buzz Cut)
+        ctx.fillStyle = '#212121'; // Black hair
+        
+        // Top: Short and flat, sits tight on head
+        ctx.fillRect(-3, -9, 6, 2); 
+        
+        // Sides: Fade (Very short, just a tiny bit visible)
+        ctx.fillRect(-3.5, -7, 0.5, 1.5); 
+        ctx.fillRect(3, -7, 0.5, 1.5);
+
+        // Eyes
+        ctx.fillStyle = '#000'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+    }
+
+
+
     else if(n.gender === 'F') {
-
-
-
-
-       // 1. LEGS (Skin) & SHOES (Dark)
+        // 1. LEGS (Skin) & SHOES (Dark) - ORIGINAL DESIGN
         ctx.fillStyle = skinColor; ctx.fillRect(-3, 8, 2, 3); ctx.fillRect(1, 8, 2, 3);
         ctx.fillStyle = '#444';    ctx.fillRect(-3, 10, 2, 1); ctx.fillRect(1, 10, 2, 1);
 
@@ -9557,21 +10340,12 @@ if(n.name === "Shummi") {
         ctx.fillRect(-4, -8, 8, 3); // Top Hair
         ctx.fillRect(-5, -7, 2, 8); // Side L
         ctx.fillRect(3, -7, 2, 8);  // Side R
-    
 
-
-
-
-
-
-} 
-
-
-
-
+        // --- EYES (Inside Female Block Only) ---
+        ctx.fillStyle='#000'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    } 
     else {
-
-        // 1. LEGS (Pants) & SHOES (Dark)
+        // 1. LEGS (Pants) & SHOES (Dark) - ORIGINAL DESIGN
         ctx.fillStyle = '#37474f'; 
         ctx.fillRect(-4, 6, 3, 5); ctx.fillRect(1, 6, 3, 5);
         ctx.fillStyle = '#111';    
@@ -9592,23 +10366,28 @@ if(n.name === "Shummi") {
         ctx.fillRect(-4, -9, 8, 3); // Top
         ctx.fillRect(-4, -6, 1, 2); // Side L
         ctx.fillRect(3, -6, 1, 2);  // Side R
- 
 
+        // --- EYES (Inside Male Block Only) ---
+        ctx.fillStyle='#000'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
+    }
 
-
-   }
-
-
-
-
-    ctx.fillStyle='#000'; ctx.fillRect(-2, -5, 1, 1); ctx.fillRect(1, -5, 1, 1);
     ctx.restore();
     
+    // --- NAME TAG ---
     ctx.fillStyle='#fff'; ctx.font='bold 16px monospace'; 
     ctx.shadowColor='#000'; ctx.shadowBlur=4; 
-    ctx.fillText(n.name, x+5, y-15+b); 
+    ctx.fillText(n.name, x+5, y-45+b); 
     ctx.shadowBlur=0;
     
+  
+
+
+
+
+
+
+
+
    // --- QUEST MARKER LOGIC ---
     let q = QUESTS[S.qStep];
     
@@ -9634,15 +10413,104 @@ function drawStruct(x, y, e) {
         ctx.fillStyle= e.kind==='Fountain' ? '#3498db' : '#2ecc71';
         ctx.beginPath(); ctx.arc(x+w/2, y+h-40, e.kind==='Fountain'?30:15, 0, 6.28); ctx.fill();
         ctx.fillStyle='#fff'; ctx.font='30px monospace'; ctx.fillText('✚', x+w/2-10, y+h-30);
-    } else if(e.kind==='House' || e.kind==='TuckShop' || e.kind==='FarmHouse' || e.kind==='Church') {
+    } 
+
+
+
+
+
+
+else if(e.kind==='House' || e.kind==='TuckShop' || e.kind==='FarmHouse' || e.kind==='Church') {
+
         if(e.kind==='TuckShop') {
-             ctx.fillStyle='#d35400'; ctx.fillRect(x+10, y+40, w-20, h-40); 
-             ctx.fillStyle='#e67e22'; ctx.fillRect(x+20, y+80, 40, 40); 
-             ctx.fillStyle='#34495e'; ctx.fillRect(x+w-70, y+h-60, 50, 60); 
-             ctx.fillStyle='#c0392b'; ctx.beginPath(); ctx.moveTo(x, y+40); ctx.lineTo(x+w/2, y-10); ctx.lineTo(x+w, y+40); ctx.fill(); 
-             ctx.fillStyle='#fff'; ctx.fillRect(x+30, y+50, w-60, 20);
-             ctx.fillStyle='#000'; ctx.font='16px monospace'; ctx.fillText("RESTAURANT", x+50, y+65);
-        } else if(e.kind==='FarmHouse') {
+            // --- TUCK SHOP (Awning Moved Left) ---
+
+            // 1. Dimensions
+            let roofEnd = y + 70;
+            let floorY = y + h;
+            let centerX = x + w/2;
+
+            // 2. Walls (Wide Base)
+            ctx.fillStyle = '#d7ccc8'; 
+            ctx.fillRect(x + 5, roofEnd, w - 10, h - 70);
+            
+            // Base Trim
+            ctx.fillStyle = '#a1887f';
+            ctx.fillRect(x + 5, floorY - 8, w - 10, 8);
+
+            // 3. STRIPED AWNING (Moved 5px Left -> Starts at x)
+            let awnY = roofEnd;
+            let stripeW = 12.5;
+            let numStripes = (w - 10) / stripeW;
+            
+            for(let i=0; i<numStripes; i++) {
+                ctx.fillStyle = (i%2===0) ? '#c62828' : '#fff'; 
+                // Main fabric (Removed "+ 5")
+                ctx.fillRect(x + (i*stripeW), awnY, stripeW, 20);
+                
+                // Scalloped edge (Removed "+ 5")
+                ctx.beginPath();
+                ctx.arc(x + (i*stripeW) + stripeW/2, awnY + 20, stripeW/2, 0, Math.PI);
+                ctx.fill();
+            }
+
+            // 4. BIG DISPLAY WINDOW
+            let winY = awnY + 25;
+            let winH = floorY - winY - 10;
+            let winW = 100; 
+
+            ctx.fillStyle = '#81d4fa'; ctx.fillRect(x + 20, winY, winW, winH); 
+            ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 4; ctx.strokeRect(x + 20, winY, winW, winH);
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.beginPath(); 
+            ctx.moveTo(x+20, winY+winH); ctx.lineTo(x+20+40, winY); 
+            ctx.lineTo(x+20+70, winY); ctx.lineTo(x+20+30, winY+winH); 
+            ctx.fill();
+
+            // 5. ENTRANCE DOOR
+            let doorX = x + w - 55;
+            let doorW = 40;
+
+            ctx.fillStyle = '#c62828'; ctx.fillRect(doorX, winY, doorW, winH);
+            ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 3; ctx.strokeRect(doorX, winY, doorW, winH);
+            ctx.fillStyle = '#81d4fa'; ctx.fillRect(doorX + 5, winY + 5, 30, 20);
+            ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(doorX + 5, winY + winH/2 + 5, 3, 0, 6.28); ctx.fill();
+
+            // 6. ROOF (Trapezoid Shape)
+            ctx.fillStyle = '#37474f'; // Dark Slate
+            ctx.beginPath();
+            ctx.moveTo(x - 5, roofEnd + 5);       // Bottom Left Overhang
+            ctx.lineTo(x + 20, y + 20);           // Top Left Corner
+            ctx.lineTo(x + w - 20, y + 20);       // Top Right Corner
+            ctx.lineTo(x + w + 5, roofEnd + 5);   // Bottom Right Overhang
+            ctx.closePath();
+            ctx.fill();
+
+            // 7. SIGNAGE ("TUCK SHOP")
+            // Chains
+            ctx.fillStyle = '#ffd700'; 
+            ctx.fillRect(centerX - 40, y + 20, 2, 25); // Left Chain
+            ctx.fillRect(centerX + 40, y + 20, 2, 25); // Right Chain
+
+            // Board
+            ctx.fillStyle = '#3e2723'; 
+            ctx.fillRect(centerX - 50, y + 45, 100, 25); 
+            
+            // Text
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 16px monospace'; 
+            ctx.textAlign = 'center'; ctx.fillText("TUCK SHOP", centerX, y + 62); ctx.textAlign = 'left';
+        }
+
+
+
+
+
+
+else if(e.kind==='FarmHouse') {
+
+
+
+
             let lvl = S.farm.houseLevel;
             ctx.fillStyle = '#5d4037'; ctx.fillRect(x+10, y+50, w-20, h-50); 
             ctx.fillStyle = '#c0392b'; 
@@ -9652,7 +10520,17 @@ function drawStruct(x, y, e) {
             if(lvl === 2) {
                 ctx.fillStyle = '#8d6e63'; ctx.fillRect(x+w-50, y+60, 40, 40); 
                 ctx.fillStyle = '#81d4fa'; ctx.fillRect(x+w-45, y+65, 30, 30);
+
+
+
+
+
             }
+
+
+
+
+
 
         // --- FIXED VINTAGE CHURCH ---
         } else if (e.kind === 'Church') {
@@ -9771,11 +10649,110 @@ function drawStruct(x, y, e) {
             ctx.fillRect(cx - 10, y + 10, 20, 4);
             ctx.fillStyle = '#ffd700'; ctx.fillRect(cx-2, y, 4, 4); // Gold Tip
 
-        } else {
-            ctx.fillStyle='#795548'; ctx.fillRect(x+10, y+40, w-20, h-40); 
-            ctx.fillStyle='#5d4037'; ctx.fillRect(x+w/2-20, y+h-50, 40, 50); 
-            ctx.fillStyle='#c0392b'; ctx.beginPath(); ctx.moveTo(x, y+40); ctx.lineTo(x+w/2, y); ctx.lineTo(x+w, y+40); ctx.fill(); 
+        } 
+
+
+
+
+else {
+        // --- FINAL TUDOR COTTAGE (Big Door, Big Windows) ---
+
+        // 1. Setup Dimensions
+        let roofEnd = y + 70; 
+        let floorY = y + h;
+        let centerX = x + w/2;
+
+        // 2. Walls (Cream Plaster)
+        ctx.fillStyle = '#fdf5e6'; 
+        ctx.fillRect(x + 15, roofEnd, w - 30, h - 70);
+
+        // 3. Timber Framing (Dark Beams)
+        ctx.fillStyle = '#4e342e'; 
+        // Vertical Posts
+        ctx.fillRect(x + 15, roofEnd, 6, h - 70); // Left
+        ctx.fillRect(x + w - 21, roofEnd, 6, h - 70); // Right
+        // Horizontal Beams
+        ctx.fillRect(x + 15, roofEnd, w - 30, 6); // Top
+        ctx.fillRect(x + 15, floorY - 10, w - 30, 6); // Bottom
+
+        // 4. MASSIVE DOOR (Grand Arch)
+        // Width: 60px, Height: ~80px
+        ctx.fillStyle = '#3e2723'; 
+        ctx.beginPath();
+        ctx.arc(centerX, floorY - 50, 30, Math.PI, 0); // Top Arch (Radius 30)
+        ctx.fillRect(centerX - 30, floorY - 50, 60, 50); // Body
+        ctx.fill();
+        
+        // Door Frame (Thick Stone)
+        ctx.strokeStyle = '#757575'; ctx.lineWidth = 5; ctx.stroke();
+        
+        // Door Details
+        ctx.fillStyle = '#1a1a1a'; // Center split
+        ctx.fillRect(centerX - 1, floorY - 78, 2, 78); 
+        ctx.fillStyle = '#ffd700'; // Knobs
+        ctx.beginPath(); ctx.arc(centerX - 8, floorY - 30, 4, 0, 6.28); ctx.fill();
+        ctx.beginPath(); ctx.arc(centerX + 8, floorY - 30, 4, 0, 6.28); ctx.fill();
+
+        // 5. BIGGER & LOWER WINDOWS
+        const drawWin = (wx) => {
+            let wy = roofEnd + 45; // Moved down significantly
+            let ww = 32; // Wider
+            let wh = 42; // Taller
+
+            // Frame & Glass
+            ctx.fillStyle = '#5d4037'; ctx.fillRect(wx - 3, wy - 3, ww + 6, wh + 6); // Frame
+            ctx.fillStyle = '#81d4fa'; ctx.fillRect(wx, wy, ww, wh); // Glass
+            
+            // Lattice
+            ctx.fillStyle = '#5d4037'; 
+            ctx.fillRect(wx + ww/2 - 1, wy, 2, wh); // Vert
+            ctx.fillRect(wx, wy + wh/2 - 1, ww, 2); // Horiz
+            
+            // Flower Box
+            ctx.fillStyle = '#8d6e63'; ctx.fillRect(wx - 5, wy + wh - 5, ww + 10, 10);
+            // Flowers
+            ctx.fillStyle = '#4caf50'; ctx.fillRect(wx - 2, wy + wh - 8, ww + 4, 5); // Leaves
+            ctx.fillStyle = '#e91e63'; 
+            ctx.beginPath(); ctx.arc(wx + 8, wy + wh - 3, 4, 0, 6.28); ctx.fill();
+            ctx.beginPath(); ctx.arc(wx + ww - 8, wy + wh - 3, 4, 0, 6.28); ctx.fill();
+        };
+        // Spaced out to fit the new big door
+        drawWin(x + 25);
+        drawWin(x + w - 57);
+
+        // 6. ROOF (Clean Triangle with Texture)
+        ctx.save(); 
+        
+        ctx.beginPath();
+        ctx.moveTo(x, roofEnd + 5);        // Bottom Left
+        ctx.lineTo(centerX, y + 10);       // Peak
+        ctx.lineTo(x + w, roofEnd + 5);    // Bottom Right
+        ctx.closePath();
+        
+        ctx.fillStyle = '#5d4037'; ctx.fill(); // Fill Base
+        ctx.clip(); // Clip Texture
+
+        // Shingles
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
+        for(let i = y; i < roofEnd; i += 8) {
+            ctx.beginPath(); ctx.moveTo(x, i); ctx.lineTo(x + w, i); ctx.stroke();
         }
+        
+        ctx.restore();
+
+        // 7. Chimney & Smoke
+        ctx.fillStyle = '#795548'; ctx.fillRect(x + w - 40, y + 25, 12, 30);
+        ctx.fillStyle = '#3e2723'; ctx.fillRect(x + w - 42, y + 22, 16, 5); 
+        
+        let t = Date.now() / 600;
+        ctx.fillStyle = 'rgba(220, 220, 220, 0.5)';
+        ctx.beginPath(); ctx.arc(x + w - 34 + Math.sin(t)*3, y + 15 - (t*10)%20, 5, 0, 6.28); ctx.fill();
+    }
+
+
+
+
+
     } else if (e.kind === 'ShippingBin') {
         ctx.fillStyle='#5d4037'; ctx.fillRect(x+5, y+10, 40, 30);
         ctx.fillStyle='#3e2723'; ctx.fillRect(x+10, y+15, 30, 20);
