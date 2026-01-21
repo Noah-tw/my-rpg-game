@@ -10,7 +10,7 @@ const Region9Farm = (function() {
     
     // --- Engine Constants ---
     const TILE = 50; 
-    const MAP_S = 180; 
+    const MAP_S = 300; // <--- MUST MATCH INDEX.HTML 
 
 
 // --- PASTE THIS NEW LINE HERE ---
@@ -26,7 +26,37 @@ const Region9Farm = (function() {
 
 
 
-    const T = { WATER:0, GRASS:1, FOREST:2, ROAD:9, BEDROCK:12, BLOCK:13, SOIL: 50 };
+
+// --- NEW: BLOCKED ROCKY PATCH COORDINATES ---
+   // --- NEW: BLOCKED ROCKY PATCH COORDINATES (Updated V2) ---
+    const PATCH_TILES = new Set([
+        // 1. LEFT SIDE (213-221)
+        "220,120","221,120",
+        "220,121","221,121",
+        "218,122","219,122","220,122",
+        "218,123","219,123","220,123",
+        "218,124","219,124",
+        "214,125","215,125","216,125","217,125","218,125","219,125",
+        "214,126","215,126","216,126","217,126",
+        "213,127","214,127","215,127",
+        "213,128","214,128",
+        "213,129",
+
+        // 2. RIGHT SIDE (273-276)
+        "273,120","274,120",
+        "273,121","274,121",
+        "273,122","274,122",
+        "274,123","275,123",
+        "274,124","275,124",
+        "274,125","275,125","276,125"
+    ]);
+
+
+
+
+
+    // Added SAND: 3 to match index.html
+    const T = { WATER:0, GRASS:1, FOREST:2, SAND:3, ROAD:9, BEDROCK:12, BLOCK:13, SOIL: 50 };
     const C = { 
         WATER:'#4fc3f7', GRASS:'#2e7d32', FOREST:'#1b5e20', 
         ROAD:'#78909c', BEDROCK:'#111', BLOCK:'#000', SOIL: '#5d4037'
@@ -155,6 +185,34 @@ const Region9Farm = (function() {
     function init(mainState) {
         S = mainState; 
 
+
+
+
+        // [END PASTE]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         // Initialize UI State
         S.ui = 'none';
         S.shop = { tab: 0, sel: 0 };
@@ -189,6 +247,86 @@ const Region9Farm = (function() {
             generateRegion9();
             S.farm.generated = true; // Mark as done
         }
+
+
+// --- FIX: SPAWN BOAT IF MISSING ---
+        // --- FIX: SMART BOAT SPAWN ---
+        // Only spawn a boat if one does not exist AND the player isn't currently sailing one.
+        let boatExists = S.ents.find(e => e.kind === 'boat');
+        if (!boatExists && !S.p.isBoating) {
+            // Spawn at default dock location
+            addEnt('vehicle', 'boat', 186, 139);
+        }
+
+
+
+
+
+
+// --- PASTE START ---
+        // --- FIX: PALM TREES V5 (Force Retry) ---
+        if (!S.farm.has_coconuts_v5) {
+            console.log("Applying Beach V5 (Diagonal C-Shape)...");
+            
+            // 1. Cleanup Old Trees
+            S.ents = S.ents.filter(e => e.kind !== 'tree_coconut');
+
+            // 2. Mark Occupied Tiles (Water=0, Road=9, Bedrock=12)
+            let taken = new Set();
+            // Scan Map for bad tiles
+            for (let y = 115; y < 165; y++) {
+                for (let x = 150; x < 200; x++) {
+                    let t = S.map[y * 300 + x];
+                    if (t === 0 || t === 12 || t === 9) taken.add(`${x},${y}`);
+                }
+            }
+            // Scan Entities
+            S.ents.forEach(e => {
+                for(let dy=0; dy<e.h; dy++) for(let dx=0; dx<e.w; dx++) {
+                    taken.add(`${Math.round(e.x)+dx},${Math.round(e.y)+dy}`);
+                }
+            });
+
+            // 3. Plant Logic
+            let count = 0;
+            let attempts = 0;
+            while (count < 80 && attempts < 5000) {
+                attempts++;
+                let tx = Math.floor(155 + Math.random() * 40); 
+                // Random Y band (Top or Bottom)
+                let ty = (Math.random() < 0.5) ? Math.floor(120 + Math.random() * 18) : Math.floor(142 + Math.random() * 18);
+
+                // Diagonal Cut Logic
+                let relX = tx - 155; 
+                let slope = 0.5;
+                if (ty < 140 && ty > 136 - (relX * slope)) continue; // Top Cut
+                if (ty > 140 && ty < 144 + (relX * slope)) continue; // Bottom Cut
+
+                // Check 3x3 Area for Safety
+                let safe = true;
+                for(let cy=ty; cy<ty+3; cy++) for(let cx=tx; cx<tx+3; cx++) {
+                    if (taken.has(`${cx},${cy}`)) safe = false;
+                }
+
+                if (safe) {
+                    // Manually add entity to avoid scope issues with addEnt helper
+                    S.ents.push({ type: 'env', kind: 'tree_coconut', x: tx, y: ty, w: 3, h: 3 });
+                    
+                    // Mark as taken
+                    for(let cy=ty; cy<ty+3; cy++) for(let cx=tx; cx<tx+3; cx++) taken.add(`${cx},${cy}`);
+                    count++;
+                }
+            }
+            console.log("V5: Planted " + count + " trees.");
+            S.farm.has_coconuts_v5 = true; 
+        }
+// --- PASTE END ---
+
+
+
+
+
+
 
         // Setup DOM/CSS
         let gameContainer = document.getElementById('game-container');
@@ -303,6 +441,129 @@ const Region9Farm = (function() {
 
         if(!S.ents.find(e => e.type === 'pet')) addEnt('pet', 'dog', 132, 133);
         updateFarmUI();
+
+
+
+
+
+
+
+       // [REPLACE WITH THIS V27 CODE]
+        // --- FIX: SEA ROCKS V27 (Group 3 Organic Shore) ---
+      // --- FIX: SEA ROCKS V27 (Group 3 Organic Shore) ---
+        if (!S.farm.has_sea_rocks_v27) {
+            console.log("Applying Sea Rocks V27 (Fixed Spacing)...");
+
+            // 1. Cleanup Old Rocks
+            S.ents = S.ents.filter(e => {
+                if (e.kind === 'sea_rock') return false; 
+                // Keep the specific boulders we want to keep
+                if (e.kind === 'boulder' && e.x >= 160 && e.x <= 230 && e.y < 135) return false;
+                if (e.kind === 'boulder' && e.x >= 250 && e.x <= 300) return false;
+                if (e.kind === 'boulder' && e.x >= 170 && e.x <= 220 && e.y >= 140) return false;
+                return true;
+            });
+
+            // ---------------------------------------------------------
+            // HELPER: Spawn Row (With Overlap Protection)
+            const spawnRow = (y, startX, limitX, forceSolidRow) => {
+                let sx = Math.floor(startX);
+                let lx = Math.floor(limitX);
+
+                // We use a while loop or manually increment x inside the for loop
+                for (let x = sx; x <= lx; x++) {
+                    
+
+// [FIX] DO NOT SPAWN ROCKS ON PATCH TILES
+                    if (PATCH_TILES.has(`${x},${y}`)) continue;
+
+
+
+
+                    // Bedrock Wall Logic (Visual only, doesn't spawn entity)
+                    if (y === 120 && x <= 199) { 
+                        S.map[y * 300 + x] = 12; 
+                        continue; 
+                    }
+
+                    S.map[y * 300 + x] = 0; // Set to Water
+
+                    // Border Calculation
+                    let isEdgeX = (x <= sx + 2 || x >= lx - 2);
+                    let density = 0.25; 
+                    if (isEdgeX || y === 120 || forceSolidRow) density = 0.90; // Higher chance, but not guaranteed
+
+                    // ROLL FOR SPAWN
+                    if (Math.random() < density) {
+                        
+                        // 1. Calculate random size
+                        let w = 2 + Math.floor(Math.random() * 2); // Width 2 or 3
+                        let h = 2 + Math.floor(Math.random() * 2); // Height 2 or 3
+                        
+                        // CLAMP 1: Width (Don't go past the limit)
+                        if (x + w - 1 > lx) w = (lx - x) + 1;
+
+                        // CLAMP 2: Height (Stop at 160)
+                        if (y + h > 160) h = 160 - y;
+
+                        if (w >= 1 && h >= 1) {
+                            addEnt('obs', 'sea_rock', x, y);
+                            let r = S.ents[S.ents.length-1];
+                            r.w = w; 
+                            r.h = h;
+                            
+                            // *** THE FIX IS HERE ***
+                            // Skip the iterator 'x' forward by the width of this rock.
+                            // If rock is width 3, we skip 2 extra spaces (since loop does x++)
+                            // This prevents the NEXT rock from spawning inside THIS rock.
+                            x += (w - 1); 
+                        }
+                    }
+                }
+            };
+            // ---------------------------------------------------------
+
+            // GROUP 1: TOP LEFT (Start 120, End 129)
+            for (let y = 120; y <= 129; y++) {
+                let sX = 179 + (y - 120) * 1.5; 
+                if (y === 120) sX = 179;
+                let eX = 221 + (y - 120) * -1.375;
+                spawnRow(y, sX, eX, (y === 129));
+            }
+
+            // GROUP 2: RIGHT (Fennel Shape: 273 -> 284 -> 273)
+            for (let y = 120; y <= 159; y++) {
+                
+                // 1. Calculate Sine Curve (0.0 -> 1.0 -> 0.0)
+                let normY = (y - 120) / 39; 
+                let curve = Math.sin(normY * Math.PI); 
+                
+                // 2. Define Start X
+                // Base: 273. Max expansion: +11 tiles (Reaches 284)
+                let sX = 273 + (curve * 11); 
+                
+                let eX = 293;
+                spawnRow(y, sX, eX, (y === 159));
+            }
+
+            // GROUP 3: BOTTOM LEFT (150 to 158)
+            for (let y = 150; y <= 158; y++) {
+                // Organic Curve: Base 180 + Sine Wave offset (-5 to +5)
+                let sX = 180 + Math.sin((y - 150) * 0.8) * 5;
+                let eX = 180 + (y - 150) * 3.75;
+                if (sX >= eX) sX = eX - 2;
+                spawnRow(y, sX, eX, (y === 158));
+            }
+
+            S.farm.has_sea_rocks_v27 = true;
+        }
+
+
+
+
+
+
+
     }
 
     // --- Input Handling ---
@@ -417,7 +678,9 @@ const Region9Farm = (function() {
         }
 
         // 4. MENUS
-        if (['bag_opt','item_opt','sleep_opt','chicken_opt','cow_opt','pet_opt','horse_opt'].includes(S.ui)) {
+        // 4. MENUS
+        // Added 'fire_opt' to this list so the game freezes the player and lets you select options
+        if (['bag_opt','item_opt','sleep_opt','chicken_opt','cow_opt','pet_opt','horse_opt','boat_opt', 'fire_opt'].includes(S.ui)) {
             e.preventDefault();
             let max = 2;
             if (S.ui === 'pet_opt') max = 4;
@@ -507,7 +770,7 @@ function generateRegion9() {
 
 // --- [ADD THIS SECTION] 0. FILL VOID (Fixes Blue Minimap) ---
         // Overwrite the default Water (0) with Bedrock (12) for the whole region area
-        for (let y = 115; y < MAP_S; y++) {
+        for (let y = 100; y < MAP_S; y++) {
             for (let x = 115; x < MAP_S; x++) {
                 S.map[y * MAP_S + x] = T.BEDROCK;
             }
@@ -520,93 +783,151 @@ function generateRegion9() {
         let taken = new Set();
 
         // Region Boundaries
-        let fx = 120, fy = 120, fw = 40, fh = 40;
+        // fw (width) increased from 40 to 80
+        // --- 1. DEFINE EXACT ZONES (Total Width = 80) ---
+        let fx = 120, fy = 120, fh = 40;
+        
+        // The Zone Widths
+        let w_farm   = 40; // 0-39
+        let w_buffer = 10; // 40-49
+        let w_beach  = 8;  // 50-57
+        let w_hybrid = 4;  // 58-61 (Wave Zone)
+        let w_ocean  = 58; // 62-119
+        
+        let fw = 120; // Total Width
 
-        // --- 2. BASE LANDSCAPE & TREES ---
+
+
+
+
+
+
+
+
+
+
+
+        
+
+       // --- 2. BASE LANDSCAPE & TREES ---
         for (let y = fy; y < fy + fh; y++) {
+            
+            // [NEW] GENTLER CURVE LOGIC
+            // 1. Calculate Curve (0.0 to 1.0)
+            let normY = (y - 120) / 40;
+            
+            // 2. Amplitude reduced to 6 (Was 12/14)
+            // This prevents it from cutting too deep into the land
+            let curveOffset = Math.sin(normY * Math.PI) * 6; 
+
+            // 3. Push Ocean further right (Base 70, minus curve)
+            // At the deepest point, ocean starts at relative X = 64
+            let limitOcean = 70 - curveOffset; 
+            
+            // 4. WIDER SAND (Fixed 10 tiles wide)
+            // Sand starts 10 tiles before the ocean line
+            let limitBeach = limitOcean - 10; 
+
             for (let x = fx; x < fx + fw; x++) {
                 
-                // A. Base Grass
                 let t = T.GRASS;
-                let k = `${x},${y}`; // Key for current tile
+                let k = `${x},${y}`;
+                let relX = x - 120; // 0 to 79
 
-                // B. Driveway
-                let isDriveway = (y >= 134 && y <= 138);
-                if (isDriveway) { t = T.ROAD; taken.add(k); }
+                // === ZONE 1: FARM & RIVER (0-39) ===
+                if (relX < 40) {
+                    t = T.GRASS;
+                    // Road
+                    if (y >= 134 && y <= 138) t = T.ROAD;
+                    // River
+                    // River
+                    if (x >= 135 && x <= 155) {
+                        let center;
 
-                // C. THE RIVER
-                if (x >= 135) {
-                    let riverCenter;
-                    if (y < 131) {
-                        let curve = Math.sin((y - fy) / 8) * 3; 
-                        riverCenter = Math.round(144 + curve);
-                    }
-                    else if (y >= 131 && y <= 142) { riverCenter = 147; }
-                    else if (y === 143) { riverCenter = 146; }
-                    else if (y === 144) { riverCenter = 145; }
-                    else if (y === 145) { riverCenter = 144; }
-                    else {
-                        let curve = Math.sin((y - fy) / 8) * 3; 
-                        riverCenter = Math.round(144 + curve);
-                    }
-                    
-                    let riverLeft = riverCenter - 1; 
-                    let riverRight = riverCenter + 2;
+                        // 1. TOP CURVE (Before Bridge)
+                        if (y < 131) {
+                            center = Math.floor(144 + Math.sin((y - 120) / 8) * 3);
+                        }
+                        // 2. STRAIGHT BRIDGE SECTION (Fixed at 147)
+                        else if (y >= 131 && y <= 142) {
+                            center = 147;
+                        }
+                        // 3. TRANSITION (Your Old Code - Smooth Diagonal)
+                        else if (y === 143) center = 146;
+                        else if (y === 144) center = 145;
+                        else if (y === 145) center = 144;
+                        // 4. BOTTOM CURVE (After Bridge)
+                        else {
+                            center = Math.floor(144 + Math.sin((y - 120) / 8) * 3);
+                        }
 
-                    if (x >= riverLeft && x <= riverRight) {
-                        if (!isDriveway) { 
-                            t = T.WATER; 
-                            taken.add(k); // Mark water as taken
+                        // 5. DRAW EXACTLY 4 TILES WIDE
+                        // [Center-1, Center, Center+1, Center+2]
+                        if (x >= center - 1 && x <= center + 2 && t !== T.ROAD) {
+                            t = T.WATER;
+                            taken.add(k);
                         }
                     }
                 }
-
-                // D. WALLS (Boundary Logic)
-                if (y === 120 || y === 159 || x === 159) { t = T.BEDROCK; taken.add(k); }
-                if (x === 120) {
-                    if (isDriveway) t = T.ROAD;
-                    else { t = T.BEDROCK; taken.add(k); }
+                // === ZONE 2: BUFFER (Grass) ===
+                else if (relX < limitBeach) {
+                    t = T.GRASS;
                 }
+                // === ZONE 3: BEACH (Sand) ===
+                else if (relX < limitOcean) {
+                    t = T.SAND;
+                }
+                // === ZONE 4: OCEAN (Water) ===
+                else {
+                    t = T.WATER;
+                    taken.add(k); // Block walking
+                }
+
+                // --- WALLS ---
+                // --- WALLS ---
+                if (y === 120) { t = T.BEDROCK; taken.add(k); } // Top Wall (Always Bedrock)
+                
+                // Bottom Wall (159): Only make it Bedrock if it's Land. Keep Water as Water.
+                if (y === 159 && t !== T.WATER && t !== T.SAND) { 
+                    t = T.BEDROCK; taken.add(k); 
+                }
+                if (x === 120 && t !== T.ROAD) { t = T.BEDROCK; taken.add(k); }
+                
 
                 S.map[y * MAP_S + x] = t;
 
-                // --- E. BORDER TREES (FIXED) ---
-                // We now check if the tile is 'taken' before placing
+                // --- TREES (Only on Grass Buffer) ---
                 let inTop = (y >= 121 && y <= 123);
                 let inBtm = (y >= 155 && y <= 158);
-                
                 if ((inTop || inBtm) && t === T.GRASS && !taken.has(k)) {
-                    let isCorner = (x <= 124) || (x >= 141 && x <= 144);
-                    let chance = isCorner ? 0.8 : 0.3; 
-                    
-                    if (Math.random() < chance) {
-                        // 1. Decide Type
-                        let isBig = (Math.random() < 0.2 && x < 158 && y < 158);
-                        let treeType = isBig ? 'tree_2x2' : 'tree_f';
-                        
-                        // 2. Safety Check for 2x2
-                        // If it's a big tree, we need to ensure the Neighbor (x+1, y) and (x, y+1) are also free
-                        let kRight = `${x+1},${y}`;
-                        let kDown  = `${x},${y+1}`;
-                        let kDiag  = `${x+1},${y+1}`;
-                        
-                        let canPlace = true;
-                        if (isBig) {
-                            if (taken.has(kRight) || taken.has(kDown) || taken.has(kDiag)) canPlace = false;
-                        }
-
-                        // 3. Place & Mark Taken
-                        if (canPlace) {
-                            addEnt('env', treeType, x, y);
-                            taken.add(k);
-                            if (isBig) {
-                                taken.add(kRight); taken.add(kDown); taken.add(kDiag);
-                            }
-                        }
+                    if (Math.random() < 0.3) {
+                         addEnt('env', 'tree_f', x, y);
+                         taken.add(k);
                     }
                 }
             }
         }
+
+
+
+// ... inside generateRegion9, AFTER the main nested loops for (y=fy... and x=fx...)
+        
+        // --- [NEW] EXTEND OCEAN TO WORLD EDGE ---
+        // Overwrite the default Bedrock with Water from x=200 to x=299
+        // --- [NEW] EXTEND OCEAN TO WORLD EDGE ---
+// Range: x=200 to x=299. 
+// STOP at 159 to keep the bottom wall solid.
+// --- [NEW] EXTEND OCEAN TO WORLD EDGE ---
+        // Range: x=200 to x=299. 
+        // We use <= 159 to make the bottom edge Water instead of Bedrock
+        for (let y = 120; y <= 159; y++) { 
+            for (let x = 200; x < 300; x++) {
+                S.map[y * MAP_S + x] = T.WATER;
+            }
+        }
+
+
+        
 
         // --- 3. OBSTACLES (Uses same 'taken' set) ---
         
@@ -663,6 +984,19 @@ for(let x=120; x<125; x++) for(let y=134; y<=138; y++) S.map[y*MAP_S+x] = T.ROAD
         addStruct('ShippingBin', 141, 139);
         addStruct('Well', 141, 141);
 
+// --- BOAT SPAWN ---
+        // Place in water (x=162), near the sand edge
+        addEnt('vehicle', 'boat', 186, 135);
+
+
+// --- PASTE THIS NEW LINE BELOW IT ---
+// Spawns a campfire on the beach (Sand area)
+// Spawns a campfire on the beach (Moved: x+3, y-3)
+addEnt('obs', 'campfire', 177, 133);
+
+
+
+
         // --- 5. APPLE TREES (Uneven / Random) ---
         // We try 50 times to place a tree in a random spot.
         let attempts = 0;
@@ -693,7 +1027,9 @@ for(let x=120; x<125; x++) for(let y=134; y<=138; y++) S.map[y*MAP_S+x] = T.ROAD
                 }
             }
 
-            // 4. If the spot is free, PLANT THE TREE!
+            // [NEW CODE]
+// ...
+        // 4. If the spot is free, PLANT THE TREE!
             if (!blocked) {
                 // NEW: 50/50 Chance for Apple or Orange
                 let tType = Math.random() < 0.5 ? 'tree_apple' : 'tree_orange';
@@ -708,8 +1044,38 @@ for(let x=120; x<125; x++) for(let y=134; y<=138; y++) S.map[y*MAP_S+x] = T.ROAD
             }
         }
       
+// --- [NEW] OCEAN COVE (Water Only) ---
+        // Range: SHIFTED RIGHT BY 15 TILES (208 -> 223)
+        // We paint WATER, but we do NOT paint a wall. 
+        let cX = 223, cW = 48; 
+        
+        for (let x = cX; x <= cX + cW; x++) {
+            let progress = (x - cX) / cW; 
+            // The physical water curve (4 tiles deep)
+            let curve = Math.sin(progress * Math.PI) * 4.0; 
+            let waterTopY = Math.floor(120 - curve);
+
+            for (let y = waterTopY; y <= 120; y++) {
+                S.map[y * MAP_S + x] = T.WATER;
+            }
+        }
+
+
+
+
+
+
+
 
         }
+// ...
+
+
+
+
+
+
+
 
 
 
@@ -1067,6 +1433,40 @@ function updateTutorial() {
 
 
 
+
+
+
+// --- PASTE THIS NEW BLOCK HERE ---
+// Campfire Timer Logic
+// --- CAMPFIRE UPDATE LOGIC ---
+        S.ents.forEach(e => {
+            // Only run this if it is a campfire AND it is lit
+            if (e.kind === 'campfire' && e.lit) {
+                
+                // 1. Burn Fuel
+                // 0.133 is the speed of game time. This ensures it lasts exactly 1 game hour.
+                e.fuel -= 0.133; 
+
+                // 2. Make Smoke/Sparks (Visuals)
+                // We add +1 to x and y to spawn particles in the center of the 2x2 fire
+                // Reduce chance from 0.1 (10%) to 0.02 (2%)
+if (Math.random() < 0.02) part(e.x + 1, e.y + 0.5, '#ffd700', 1, 2);
+                if (Math.random() < 0.05) part(e.x + 1, e.y + 0.5, 'rgba(100,100,100,0.5)', 1); // Smoke
+
+                // 3. Check if fuel is gone
+                if (e.fuel <= 0) {
+                    e.lit = false; // Turn off
+                    e.fuel = 0;
+                    popText(e.x, e.y, "Fire is out", "#ccc");
+                }
+            }
+        });
+
+
+
+
+
+
         // --- 1. TIME SYSTEM (45s = 1h) ---
         // 45 real seconds = 60 game minutes.
         // 60FPS assumed. 0.0222 minutes per frame.
@@ -1074,14 +1474,30 @@ function updateTutorial() {
         // 20 real seconds = 1 game hour. (Day = 8 mins)
         // --- 1. TIME SYSTEM (SUPER FAST) ---
         // 1 game hour = ~5 real seconds. (Full Day = ~2 mins)
+       // --- 1. TIME SYSTEM (3 MINUTES) ---
+        // 1440 mins / (3 * 60 * 60 frames) = 0.1333...
         let prevTime = S.farm.time;
-        S.farm.time += 0.2;
+        S.farm.time += 0.133;
+
+
+
         
-        // Day Advance (When time crosses 6:00 AM / 360m)
+        // Day Advance (When time crosses 6:00 AM)
         if (Math.floor(prevTime) < 360 && Math.floor(S.farm.time) >= 360) {
             S.farm.day++;
-            S.farm.dayNoticeTimer = 180; // 3 Seconds
+            S.farm.dayNoticeTimer = 180;
+
+            // --- CRITICAL: DECIDE WEATHER FOR THE NEW DAY ---
+            // If we don't do this, the weather never changes, and rain never stops!
+            S.farm.weather = (Math.random() < 0.35) ? 'rain' : 'sun';
+            
+            // If it's raining, water the crops
+            if(S.farm.weather === 'rain') {
+                for(let k in S.farm.plots) S.farm.plots[k].watered = true;
+            }
         }
+
+
 
         // 24-Hour Loop (1440m = 24h)
         if (S.farm.time >= 1440) S.farm.time = 0;
@@ -1101,18 +1517,35 @@ function updateTutorial() {
             S.farm.stepTimer--; 
 
             if (S.farm.stepTimer <= 0) {
-                // === CASE 1: RIDING HORSE ===
-                if (S.p.isRiding) {
-                    S.farm.stepTimer = 18; // Faster rhythm for horse
-                    S.audio.play('horse_walk'); // <--- Plays "horse_walk.mp3"
+
+
+
+
+
+
+
+
+               // === CASE 0: ROWING BOAT ===
+                if (S.p.isBoating) {
+                    // --- CHANGED: 45 -> 85 ---
+                    // The visual animation takes about 1.4 seconds.
+                    // 85 frames * (1/60) ≈ 1.41 seconds.
+                    // Now the sound will match the oar hitting the water!
+                    S.farm.stepTimer = 85; 
                     
-                    // Add dust effect for weight
-                    if(Math.random() < 0.5) part(p.x, p.y + 0.8, '#d7ccc8', 1, 2);
+                    S.audio.play('row_boat'); 
+                    part(p.x, p.y + 0.8, '#b3e5fc', 2, 3);
+                }
+                // === CASE 1: RIDING HORSE ===
+                else if (S.p.isRiding) {
+                    S.farm.stepTimer = 18; 
+                    S.audio.play('horse_walk'); 
+                    if(Math.random() < 0.5) part(S.p.x, S.p.y + 0.8, '#d7ccc8', 1, 2);
                 } 
-                // === CASE 2: WALKING ON FOOT ===
+                // === CASE 2: WALKING ===
                 else {
-                    S.farm.stepTimer = 22; // Slower rhythm for human
-                    S.audio.play('step'); // <--- Plays "Footstep.mp3"
+                    S.farm.stepTimer = 22; 
+                    S.audio.play('step'); 
                 }
             }
 
@@ -1147,15 +1580,447 @@ let frontY = p.y + 0.5 + (dy / p.spd * 0.75);
             // -----------------------------
 
             let tx = p.x + dx; let ty = p.y + dy;
-            if(!solid(tx+0.5, p.y+0.5)) p.x = tx;
-            if(!solid(p.x+0.5, ty+0.5)) p.y = ty;
+            
+
+
+
+
+
+// [PASTE THIS HERE]
+            // --- SMOOTH SLIDE INTERCEPTOR ---
+            // If we are walking into the Cove wall, don't stop.
+            // Instead, clamp 'ty' exactly to the curve line so we slide along it.
+           // --- SMOOTH SLIDE INTERCEPTOR (The Mix: Close + Smooth) ---
+            // Range: 221.5 to 273.5
+            if (tx >= 221.5 && tx <= 273.5) {
+                
+                const getSlideY = (worldX) => {
+                    let clampedX = Math.max(222, Math.min(273, worldX));
+                    let relX = clampedX - 222;
+                    const p1x=12, p2x=39, p3x=51;
+                    
+                    let t = relX / 51.0; 
+                    for(let i=0; i<5; i++) { // Increased precision to 5 to match canMove
+                        let inv = 1-t;
+                        let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                        let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                        if (Math.abs(slope) > 0.001) t -= (bx - relX) / slope;
+                    }
+                    let inv = 1-t;
+                    let by = (3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0);
+                    return 120 - by; 
+                };
+
+                let ceilingY = getSlideY(tx);
+
+                // --- THE MIX FIX (-0.4) ---
+                // -0.5 was too aggressive (caused jitter).
+                // 0.0 was too far (original).
+                // -0.4 gets you close but keeps a tiny "smoothness buffer".
+                let limitY = ceilingY - 0.4;
+
+                if (ty < limitY) {
+                    ty = limitY;
+                }
+            }
+
+
+
+
+
+
+
+
+
+
+            // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+            // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+            // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+           // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+           // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+          // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+            // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+           // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+            // --- MOVEMENT LOGIC (WALK vs BOAT) ---
+          const canMove = (nx, ny) => {
+                
+                // --- 1. SPECIAL: COVE VECTOR COLLISION ---
+                // Range: 221.5 to 273.5 (Widened to catch player before Grid hits)
+                if (nx >= 221.5 && nx <= 273.5 && ny >= 105 && ny <= 125) {
+                    
+                    // A. SOLVE BEZIER MATH (The "Invisible Wall" Line)
+                    const getExactCurveY = (worldX) => {
+                        let clampedX = Math.max(222, Math.min(273, worldX));
+                        let relX = clampedX - 222;
+                        
+                        const p0x=0, p1x=12, p2x=39, p3x=51;
+                        
+                        // Solve t for X (High Precision 8 Iterations)
+                        let t = relX / 51.0; 
+                        for(let i=0; i<8; i++) { 
+                            let inv = 1-t;
+                            let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                            let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                            if (Math.abs(slope) > 0.0001) t -= (bx - relX) / slope;
+                        }
+
+                        let inv = 1-t;
+                        let by = (3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0);
+                        return 120 - by;
+                    };
+
+
+
+                    // --- UPDATE THIS LINE ---
+                    // Must match the Slide Interceptor offset (-0.4)
+                    let limitY = getExactCurveY(nx) - 0.4;
+
+
+
+
+                    // B. UPPER BOUND CHECK
+                    // If your feet (ny) are higher (smaller number) than the curve line -> BLOCK
+                    if (ny < limitY) {
+                        return false; 
+                    }
+
+                    // C. GROUND CHECK (Bypass Bedrock)
+                    // If we are below the curve, we ignore the Map Grid (Bedrock)
+                    // and only check for fences/cows/trees.
+                    let ix = Math.floor(nx);
+                    let iy = Math.floor(ny);
+                    let k = `${ix},${iy}`;
+
+                    if (S.farm.fences[k] || S.farm.debris[k] || S.farm.structures[k]) return false;
+
+                    for (let e of S.ents) {
+                        if (nx >= e.x && nx < e.x + e.w && ny >= e.y && ny < e.y + e.h) {
+                            return false;
+                        }
+                    }
+
+                    // FORCE ALLOW (We are in the safe zone of the Cove)
+                    return true; 
+                }
+
+                // --- 2. BOAT MODE (Fixed: River vs Beach) ---
+                if (S.p.isBoating) {
+                    
+                    // [NEW] HARD SAFETY STOP: VOID LIMIT
+                    if (ny >= 159) return false; 
+
+                    let mx = Math.floor(nx);
+                    let my = Math.floor(ny);
+                    if (mx < 0 || mx >= MAP_S || my < 0 || my >= MAP_S) return false;
+                    let tile = S.map[my * MAP_S + mx];
+
+
+
+
+// =========================================================
+                    // [FIX] BLOCK SPECIFIC ROCK PATCHES
+                    // =========================================================
+                    if (PATCH_TILES.has(`${mx},${my}`)) return false;
+
+
+
+                    // =========================================================
+                    // [FIX] COVE SHOULDER BLOCKS (PREVENTS LEAKING)
+                    // =========================================================
+                    // We explicitly block the "Gateposts" of the cove entrance.
+                    // This stops the boat from sailing through the transition tiles.
+                    
+                    // 1. Left Pillar (x=222) - Block anything at or above water line
+                    if (mx === 222 && my <= 121) return false; 
+
+                    // 2. Right Pillar (x=273) - Block anything at or above water line
+                    if (mx === 273 && my <= 121) return false;
+
+                    // 3. Existing Drip Rocks (Left Side Waterfall effect)
+                    if (
+                        (mx === 221 && my === 121) ||
+                        (mx === 220 && my === 122) ||
+                        (mx === 219 && my === 123) ||
+                        (mx === 218 && my === 124)
+                    ) return false;
+
+                    // 4. Existing Drip Rocks (Right Side Waterfall effect)
+                    if (
+                        (mx === 274 && (my >= 122 && my <= 125)) ||
+                        (mx === 275 && my === 125)
+                    ) return false;
+                    // =========================================================
+
+
+                    // A. CHECK TILE VALIDITY
+                    let isValidWater = false;
+
+                    // 1. Standard Water & Sand
+                    if (tile === 0) isValidWater = true; 
+                    if (tile === 3) isValidWater = true;
+
+                    // 2. Cove "Hole" (Bedrock 12)
+                    // Added "&& ny < 130" to ensure we don't accidentally allow the bottom void
+                    // [CRITICAL FIX]: changed range to 222.1 to 272.9 to avoid catching the walls
+                    if (tile === 12 && nx > 222.1 && nx < 272.9) {
+                         const getCoveCeiling = (worldX) => {
+                            let relX = worldX - 222;
+                            const p1x=12, p2x=39, p3x=51;
+                            let t = relX / 51.0; 
+                            for(let i=0; i<4; i++) { 
+                                let inv = 1-t;
+                                let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                                let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                                if (Math.abs(slope) > 0.001) t -= (bx - relX) / slope;
+                            }
+                            let inv = 1-t;
+                            let by = (3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0);
+                            return 120 - by; 
+                         };
+                         
+                         // Check collision against the curve AND ensure we are high up
+                         if (ny > (getCoveCeiling(nx) - 0.4) && ny < 130) isValidWater = true;
+                    }
+
+                    if (!isValidWater) return false; // Blocked by Land/Road/Solid Bedrock
+
+                    // ... (The rest of the function remains the same) ...
+
+                    // ... (Keep the rest of your Beach Shoreline logic here) ...
+                    
+                    // B. CHECK SHORELINE (Beach Curve)
+                    if (nx >= 160 && nx < 200) {
+                        let regionTop = 120, regionHeight = 40;
+                        let normY = (ny - regionTop) / regionHeight;
+                        if (normY < 0) normY = 0; if (normY > 1) normY = 1;
+                        let curve = Math.sin(normY * Math.PI) * 6.0;
+                        let waterX = 190.0 - curve; 
+                        if (nx < waterX) return false;
+                    }
+
+                    // C. CHECK OBJECTS
+                    for (let e of S.ents) {
+                        if (e.type === 'obs' || e.type === 'struct') {
+                            if (nx >= e.x && nx < e.x + e.w && ny >= e.y && ny < e.y + e.h) return false;
+                        }
+                    }
+                    
+                    let k = `${mx},${my}`;
+                    if (S.farm.fences[k] || S.farm.debris[k] || S.farm.structures[k]) return false;
+                    
+                    return true;
+                }
+                
+
+
+
+                // --- 3. WALK MODE (Extended Shallow Water +2) ---
+                else {
+                    // Step A: Check if the tile is normally solid (Walls, Fences, Water)
+                    if (solid(nx, ny)) {
+                        
+                        // Step B: detailed check - Is it blocked by Water specifically?
+                        let mx = Math.floor(nx);
+                        let my = Math.floor(ny);
+                        let t = S.map[my * MAP_S + mx];
+
+                        // If it is WATER (0), check if we are in the "Shallow Zone"
+                        if (t === 0) {
+                            // 1. Calculate the exact Shore Line (The Formula)
+                            let normY = (ny - 120) / 40;
+                            if (normY < 0) normY = 0; if (normY > 1) normY = 1;
+                            let curve = Math.sin(normY * Math.PI) * 6.0;
+                            let shoreX = 190.0 - curve; 
+
+                            // 2. Allow walking up to Formula Line + 2 tiles (Shallow Wade)
+                            // We use 2.8 to ensure the player can fully occupy the 2nd water tile.
+                            if (nx < shoreX + 2.8) {
+                                
+
+
+
+                                // 3. Safety Check: No walking through objects in water
+                               // 3. Safety Check: No walking through objects in water
+                                let k = `${mx},${my}`;
+                                if (S.farm.fences[k] || S.farm.debris[k] || S.farm.structures[k]) return false;
+                                
+                                for (let e of S.ents) {
+                                    // --- FIX: Allow walking out of boat ---
+                                    if (e.kind === 'boat') {
+                                        // If we are currently standing inside the boat, ignore it so we can walk out
+                                        let px = S.p.x + 0.5, py = S.p.y + 0.5;
+                                        if (px >= e.x && px < e.x + e.w && py >= e.y && py < e.y + e.h) continue;
+                                    }
+                                    // --------------------------------------
+
+                                    if (nx >= e.x && nx < e.x + e.w && ny >= e.y && ny < e.y + e.h) return false;
+                                }
+                                
+                                // All clear! We are knee-deep in water.
+                                
+                                // All clear! We are knee-deep in water.
+                                return true; 
+                            }
+                        }
+                        return false; // Blocked by Bedrock, Object, or Deep Water
+                    }
+                    return true; // Not solid (Grass/Sand)
+                }
+            };
+
+
+
+
+
+
+
+
+
+
+
+            if(canMove(tx+0.5, p.y+0.5)) p.x = tx;
+            if(canMove(p.x+0.5, ty+0.5)) p.y = ty;
+            
             if(dy<0) p.dir=0; if(dx>0) p.dir=1; if(dy>0) p.dir=2; if(dx<0) p.dir=3;
+
+
         }
 
         // --- 3. CAMERA ---
         if(S.shake > 0) S.shake *= 0.8;
         S.cam.x += (p.x*TILE - cvs.width/2 - S.cam.x) * 0.1;
         S.cam.y += (p.y*TILE - cvs.height/2 - S.cam.y) * 0.1;
+
+
+
+// --- 4. DOLPHIN SPAWNER (Smart Walls + Specific Region) ---
+   // --- 4. DOLPHIN SPAWNER (Right Wall Buffer -12) ---
+        // Range: 160 to 295
+        if (S.p.isBoating && S.p.x >= 160 && S.p.x < 295) {
+            
+            // Hard limit for bottom void safety
+            if (S.p.y > 154) return; 
+
+           // --- CHANGED: NORMAL FREQUENCY ---
+            // 0.03  = Testing (2 per second)
+            // 0.001 = Normal  (1 every ~15 seconds)
+            if (Math.random() < 0.001) {
+
+                // --- HELPER: Calculate Walls at any Y ---
+                const getWallsAt = (y) => {
+                    // Left Wall (Beach)
+                    let normY = (y - 120) / 40;
+                    if (normY < 0) normY = 0; if (normY > 1) normY = 1;
+                    let bX = 190.0 - (Math.sin(normY * Math.PI) * 6.0);
+
+                    // Left Wall (Group 1 - Top)
+                    // Extended range to 132 for safety
+                    let g1X = -999;
+                    if (y >= 120 && y <= 132) g1X = 221.0 - ((y - 120) * 1.375);
+
+                    // Left Wall (Group 3 - Bottom)
+                    let g3X = -999;
+                    if (y >= 150 && y <= 158) g3X = 180.0 + ((y - 150) * 3.75);
+
+                    let L = Math.max(bX, g1X, g3X);
+
+                    // Right Wall (Group 2)
+                    let normY_R = (y - 120) / 39;
+                    if (normY_R < 0) normY_R = 0; if (normY_R > 1) normY_R = 1;
+                    let R = 273.0 + (Math.sin(normY_R * Math.PI) * 11.0);
+
+                    return { L, R };
+                };
+
+                // --- 1. DIRECTION LOGIC ---
+                let wallsP = getWallsAt(S.p.y);
+                let dir = Math.random() < 0.5 ? 1 : -1;
+
+                if (S.p.x < wallsP.L + 12) dir = 1; 
+                else if (S.p.x > wallsP.R - 12) dir = -1;
+                
+                // Force Right at Cove Entrance
+                if (S.p.x >= 220 && S.p.x <= 232 && S.p.y >= 115 && S.p.y <= 121) dir = 1; 
+
+
+                // --- 2. SPAWN CALCULATION ---
+                let dist = 2.0 + Math.random() * 3.0; 
+                let destX = S.p.x + (dist * dir);
+                let spawnY = S.p.y + (Math.random() * 4 - 2);
+
+
+                // --- 3. VALIDATION (With -12 Buffer on Right) ---
+                // 3-Point Check for Diagonals
+                let wTop = getWallsAt(spawnY - 2.0);
+                let wCenter = getWallsAt(spawnY);
+                let wBottom = getWallsAt(spawnY + 2.0);
+
+                let limitL = Math.max(wTop.L, wCenter.L, wBottom.L);
+                let limitR = Math.min(wTop.R, wCenter.R, wBottom.R);
+
+                // [FIX] Added "- 12" to the Right Limit
+                // This ensures we never spawn in the 12 tiles closest to the right rocks.
+                let validX = (destX > limitL && destX < limitR - 12);
+                
+                let validY = (spawnY < 155); 
+
+                if (validX && validY) {
+                    
+                    // === PHYSICS ENGINE ===
+                    let jumpForce = -0.40; 
+                    let jumpGrav  = 0.020; 
+                    let jumpSpeed = 0.15;  
+
+                    // === COVE EXCEPTION ===
+                    if (destX >= 222 && destX <= 273) {
+                        
+                        let isDangerZone = (destX >= 228 && destX <= 242) || (destX >= 252 && destX <= 266);
+
+                        if (isDangerZone) {
+                            if (spawnY < 120) spawnY = 120 + Math.random() * 1.5;
+                            jumpForce = -0.14; 
+                            jumpGrav  = 0.045; 
+                            jumpSpeed = 0.28;  
+                        } 
+                        else {
+                            jumpForce = -0.22; 
+                            jumpGrav  = 0.025; 
+                            jumpSpeed = 0.20; 
+                            if (spawnY < 117) spawnY = 117; 
+                        }
+                    }
+
+                    S.parts.push({
+                        type: 'dolphin',
+                        x: destX, 
+                        y: spawnY,
+                        startY: spawnY, 
+                        vx: dir * jumpSpeed, 
+                        vy: jumpForce,      
+                        grav: jumpGrav,    
+                        life: 200,      
+                        dir: dir
+                    });
+
+                    part(destX, spawnY, '#b3e5fc', 12, 5);
+                }
+            }
+        }
+
+
+
+
+// --- MASTER AMBIENCE LOOP ---
+        // Placed here so it checks AFTER fuel runs out and AFTER day changes
+        if (S.audio.updateAmbience) {
+            let isRain = (S.farm.weather === 'rain');
+            let isOcean = (S.p.x > 160);
+            let isFire = S.ents.some(e => e.kind === 'campfire' && e.lit);
+
+            S.audio.updateAmbience(isRain, isOcean, isFire);
+        }
+
+
 
 
 
@@ -1169,7 +2034,61 @@ updateTutorial();
   // --- REPLACE THE ENTIRE handleMenuAction FUNCTION WITH THIS ---
   // --- REPLACE handleMenuAction FUNCTION ---
    function handleMenuAction() {
-        S.audio.play('btn_click'); // AUDIO: Clicked a Menu Button
+        S.audio.play('btn_click'); 
+
+        // --- BOAT MENU ---
+        if (S.ui === 'boat_opt') {
+            let boat = S.menuTarget;
+            if (S.menuSel === 0) { // SAIL
+                // 1. Remove Boat Entity
+                S.ents = S.ents.filter(e => e !== boat);
+                // 2. Set State
+                S.p.isBoating = true;
+                S.p.isRiding = false; 
+                S.p.x = boat.x; S.p.y = boat.y;
+                // --- CHANGED: SLOWER SPEED ---
+                S.p.spd = 0.08; // Was 0.15. Now 0.08 (Heavy Rowing)
+                // -----------------------------
+                popText(S.p.x, S.p.y, "Set Sail!", "#4fc3f7");
+                updateFarmUI();
+            }
+            S.ui = 'none';
+            return;
+        }
+        
+        // ... rest of menu logic ...
+
+
+
+
+
+
+
+// --- PASTE THIS NEW BLOCK HERE ---
+// --- CAMPFIRE MENU ---
+// --- CAMPFIRE MENU ---
+        // --- CAMPFIRE MENU ACTION ---
+        if (S.ui === 'fire_opt') {
+            let fire = S.menuTarget;
+            if (S.menuSel === 0) { 
+                fire.lit = true;
+                fire.fuel = 180; // <--- CHANGED: 180 mins = 3 Game Hours
+                S.audio.play('btn_click'); 
+                popText(S.p.x, S.p.y, "Warmth...", "#ffa726");
+                // Start particle burst
+                for(let i=0; i<10; i++) part(fire.x+1, fire.y+1, '#ffd700', 1, 3);
+            }
+            S.ui = 'none';
+            return;
+        }
+
+
+
+
+
+
+
+
 
 // HORSE MENU
 
@@ -1423,11 +2342,109 @@ if (S.ui === 'cow_opt') {
 
 ///////////////////////////
 // --- REPLACE interact FUNCTION ---
-    function interact() {
+  function interact() {
         const p = S.p;
         let tx = Math.round(p.x + (p.dir===1?1:p.dir===3?-1:0));
         let ty = Math.round(p.y + (p.dir===2?1:p.dir===0?-1:0));
         let k = `${tx},${ty}`;
+
+        // --- BOAT INTERACTION ---
+
+        // A. DISMOUNT (Smart Spawn - Prevents Wall Traps)
+        if (S.p.isBoating) {
+            // 1. Calculate Shore X (Beach Limit)
+            let regionTop = 120, regionHeight = 40;
+            let normY = (p.y - regionTop) / regionHeight;
+            if (normY < 0) normY = 0; if (normY > 1) normY = 1;
+            let shoreX = 190.0 - (Math.sin(normY * Math.PI) * 6.0);
+            
+            // 2. Calculate Cove Y (Cove Wall Limit)
+            let coveLimitY = -999; // Default (No wall)
+            if (p.x >= 221 && p.x <= 274) {
+                const getCoveY = (wx) => {
+                    let relX = wx - 222;
+                    const p1x=12, p2x=39, p3x=51;
+                    let t = relX / 51.0; 
+                    for(let i=0; i<4; i++) { 
+                        let inv = 1-t;
+                        let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                        let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                        if (Math.abs(slope) > 0.001) t -= (bx - relX) / slope;
+                    }
+                    let inv = 1-t;
+                    let by = (3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0);
+                    return 120 - by;
+                };
+                coveLimitY = getCoveY(p.x);
+            }
+
+            // 3. Determine Safe Spawn Spot
+            let spawnX = Math.round(p.x);
+            let spawnY = Math.round(p.y);
+
+            // A. Fix Beach Trap: If too far left, push right
+            if (spawnX < shoreX) spawnX = Math.ceil(shoreX);
+
+
+
+
+// B. Fix Cove Trap: If too high (in wall), push down (water)
+            // We use floor+1 or ceil to ensure we are clearly OUT of the wall
+            if (spawnY < coveLimitY) spawnY = Math.ceil(coveLimitY);
+
+           // 4. Execute
+            // --- FIX: JUMP TO SHORE (GRID SNAPPED) ---
+            if (p.x < shoreX + 1.2) { 
+                S.p.isBoating = false;
+
+// --- RESTORE CLASS SPEED ---
+                if (S.p.class === 'rogue') S.p.spd = 0.15;
+                else if (S.p.class === 'warrior') S.p.spd = 0.12;
+                else S.p.spd = 0.13; // Mage
+                
+                // 1. Snap coordinates to whole numbers (Fixes infinite spawn bug)
+                let bx = Math.round(shoreX);
+                let by = Math.round(spawnY);
+
+                // 2. Teleport Player to Land (Left of boat)
+                S.p.x = bx - 1; 
+                S.p.y = by;
+                
+                // 3. Safety Check: Only spawn if a boat isn't already there
+                let stackCheck = S.ents.find(e => e.kind === 'boat' && Math.abs(e.x - bx) < 1 && Math.abs(e.y - by) < 1);
+                
+                if (!stackCheck) {
+                    addEnt('vehicle', 'boat', bx, by);
+                }
+
+                popText(p.x, p.y, "Splash!", "#4fc3f7");
+                S.audio.play('water'); 
+            } else {
+                popText(p.x, p.y, "Too Deep!", "#ef5350");
+            }
+            return; 
+        }
+
+
+
+
+
+        // B. BOARDING (Open Menu)
+        let boat = S.ents.find(e => e.kind === 'boat' && xIn(e, tx, ty));
+        if (boat) {
+            S.audio.play('btn_click');
+            S.menuTarget = boat;
+            S.ui = 'boat_opt';
+            S.menuSel = 0;
+            return;
+        }
+
+        // ... Rest of interact function ...
+
+
+
+
+
 
 
 
@@ -1466,7 +2483,10 @@ if (S.ui === 'cow_opt') {
             if (spawnX !== null) {
                 // Success: Hop off and place horse at the safe spot
                 S.p.isRiding = false;
-                S.p.spd = 0.15; // Reset Speed
+                // --- RESTORE CLASS SPEED ---
+                if (S.p.class === 'rogue') S.p.spd = 0.15;
+                else if (S.p.class === 'warrior') S.p.spd = 0.12;
+                else S.p.spd = 0.13;
                 addEnt('horse', 'horse', spawnX, spawnY);
                 popText(p.x, p.y, "Hop!", "#fff");
                 updateFarmUI();
@@ -1490,7 +2510,16 @@ if (S.ui === 'cow_opt') {
 
 
 
-
+// --- PASTE THIS NEW BLOCK HERE ---
+// C. CAMPFIRE INTERACTION
+let fire = S.ents.find(e => e.kind === 'campfire' && xIn(e, tx, ty));
+if (fire) {
+    S.audio.play('btn_click');
+    S.menuTarget = fire;
+    S.ui = 'fire_opt'; // Set UI state to Fire Menu
+    S.menuSel = 0;
+    return;
+}
 
 
 
@@ -2017,9 +3046,19 @@ S.farm.justSold = true; // Signal for tutorial
     function sleep() {
         S.audio.play('rooster'); // AUDIO
         S.audio.playBGM('farm_day'); // Reset BGM to day
+
+
+       // Advance Day
         S.farm.day++;
-        S.farm.time = 360; // Set time to 6:00 AM
+        S.farm.time = 360; 
         S.p.hp = S.p.maxHp;
+
+        // --- NEW DAY WEATHER ---
+        S.farm.weather = (Math.random() < 0.35) ? 'rain' : 'sun';
+
+
+
+
 
         // --- SMART SAVE LOGIC ---
         // Scenario B: Bound File (Auto-Save)
@@ -2319,14 +3358,15 @@ S.farm.justSlept = true; // Signal for tutorial
   // --- UI Update (Fixed: Clean Font for ~) ---
    // --- REPLACE THE ENTIRE updateFarmUI FUNCTION ---
 
-    function updateFarmUI() {
-
+ function updateFarmUI() {
 
 // --- START OF NEW FIX ---
-    // ADDED: 'bag_opt' to keep UI hidden while in the sub-menu
-    if (S.ui === 'shop' || S.ui === 'bag' || S.ui === 'bag_opt' || S.ui === 'letter_edit') {
+    // ADDED: 'bag_opt' and 'isBoating' to keep UI hidden
+    if (S.ui === 'shop' || S.ui === 'bag' || S.ui === 'bag_opt' || S.ui === 'letter_edit' || S.p.isBoating) {
         let bar = document.getElementById('skill-bar');
         let hint = document.getElementById('space-hint');
+
+
         let quest = document.getElementById('quest-panel');
         if(bar) bar.style.display = 'none';
         if(hint) hint.style.display = 'none';
@@ -2751,11 +3791,556 @@ function draw() {
         let cx = Math.floor(S.cam.x/TILE), cy = Math.floor(S.cam.y/TILE);
         let ex = cx + (cvs.width/TILE)+2, ey = cy + (cvs.height/TILE)+2;
 
+
+
+
+// --- [MEAT] NEW CODE TO PASTE ---
+        // 1. SKY LAYER (Layer 0.2)
+        // Range: x=200 to 260. Height: 16 tiles (y=104 to 120)
+        // 1. SKY LAYER (Layer 0.2)
+      // 1. SKY LAYER (Layer 0.2) - DYNAMIC SUN/MOON CYCLE
+       // 1. SKY LAYER (Layer 0.2) - DYNAMIC SUN/MOON CYCLE
+        // Range: x=200 to 260. Height: 16 tiles (y=104 to 120)
+// 1. SKY LAYER (Layer 0.2) - REALISTIC ASYMMETRIC CYCLE & VOLUMETRIC CLOUDS
+        // Range: x=200 to 260. Height: 16 tiles (y=104 to 120)
+       // 1. SKY LAYER (Layer 0.2) - REALISTIC ASYMMETRIC CYCLE & VOLUMETRIC CLOUDS
+        // Range: x=200 to 295 (Updated). Height: 16 tiles.
+        let skyStartX = 200 * TILE - S.cam.x + sx;
+        
+        // CHANGE THIS LINE: 75 -> 95
+        let skyW      = 95 * TILE; 
+        
+        let skyBaseY  = 120 * TILE - S.cam.y;
+        let skyH      = 16 * TILE;
+        let skyTopY   = skyBaseY - skyH;
+
+        if (skyStartX + skyW > 0 && skyStartX < cvs.width) {
+            
+            let m = S.farm.time;
+
+            // --- A. HELPERS ---
+            const lerp = (start, end, p) => start + (end - start) * p;
+            const lerpColor = (c1, c2, p) => {
+                p = Math.max(0, Math.min(1, p));
+                return {
+                    r: Math.round(lerp(c1.r, c2.r, p)),
+                    g: Math.round(lerp(c1.g, c2.g, p)),
+                    b: Math.round(lerp(c1.b, c2.b, p)),
+                    a: lerp(c1.a, c2.a, p)
+                };
+            };
+            const colStr = (c) => `rgba(${c.r},${c.g},${c.b},${c.a})`;
+
+            // --- B. REALISTIC PALETTE (Asymmetric) ---
+            const SKY_KEYS = {
+                NIGHT:      { t:{r:10, g:15, b:40, a:1},   b:{r:20, g:40, b:90, a:1} },  // Deep Navy
+                
+                // SUNRISE (Cool, Crisp, Pale)
+                DAWN_EARLY: { t:{r:25, g:30, b:80, a:1},   b:{r:200,g:180,b:140, a:1} }, // Indigo to Pale Wheat
+                DAWN_BRIGHT:{ t:{r:70, g:150,b:230, a:1},  b:{r:255,g:250,b:200, a:1} }, // Sky Blue to Lemon
+
+                // DAY (Bright)
+                DAY:        { t:{r:0,  g:160,b:240, a:1},  b:{r:240,g:250,b:255, a:1} }, // Azure to White
+                
+                // SUNSET (Warm, Heavy, Burning)
+                GOLDEN:     { t:{r:40, g:100,b:180, a:1},  b:{r:255,g:190,b:60,  a:1} }, // Deep Blue to Gold
+                SUNSET_RED: { t:{r:50, g:40, b:90,  a:1},  b:{r:255,g:70, b:20,  a:1} }, // Violet to Burning Orange
+                TWILIGHT:   { t:{r:20, g:20, b:50,  a:1},  b:{r:160,g:60, b:80,  a:1} }  // Navy to Dull Crimson
+            };
+
+            // --- C. CLOUD PALETTE (Body Color & Shadow Color) ---
+            const CLOUD_KEYS = {
+                NIGHT:       { main:{r:100,g:110,b:130,a:0.3}, shad:{r:50, g:60, b:80, a:0.3} },
+                
+                // Sunrise Clouds: Grey/Blue shadows, Bright tops
+                DAWN_EARLY:  { main:{r:200,g:200,b:220,a:0.7}, shad:{r:100,g:100,b:140,a:0.6} },
+                DAWN_BRIGHT: { main:{r:255,g:255,b:255,a:0.9}, shad:{r:200,g:210,b:230,a:0.5} },
+                
+                DAY:         { main:{r:255,g:255,b:255,a:0.95},shad:{r:220,g:230,b:240,a:0.4} },
+                
+                // Sunset Clouds: Gold tops, Purple/Dark shadows
+                GOLDEN:      { main:{r:255,g:245,b:200,a:0.9}, shad:{r:180,g:160,b:140,a:0.5} },
+                SUNSET_RED:  { main:{r:255,g:200,b:180,a:0.8}, shad:{r:80, g:40, b:60, a:0.6} }, // Pinkish top, dark purple bottom
+                TWILIGHT:    { main:{r:100,g:90, b:120,a:0.5}, shad:{r:40, g:30, b:50, a:0.5} }  // Dark silhouette
+            };
+
+            // --- D. TIME INTERPOLATION ---
+            let currSkyT, currSkyB, cCloudMain, cCloudShad, starOp = 0;
+
+            // 1. NIGHT (20:30 - 04:30)
+            if (m >= 1230 || m < 270) {
+                currSkyT = SKY_KEYS.NIGHT.t; currSkyB = SKY_KEYS.NIGHT.b;
+                cCloudMain = CLOUD_KEYS.NIGHT.main; cCloudShad = CLOUD_KEYS.NIGHT.shad;
+                starOp = 1.0;
+            }
+            // 2. DAWN: EARLY (04:30 - 05:30) [Cool/Pale]
+            else if (m < 330) {
+                let p = (m - 270) / 60;
+                currSkyT = lerpColor(SKY_KEYS.NIGHT.t, SKY_KEYS.DAWN_EARLY.t, p);
+                currSkyB = lerpColor(SKY_KEYS.NIGHT.b, SKY_KEYS.DAWN_EARLY.b, p);
+                cCloudMain = lerpColor(CLOUD_KEYS.NIGHT.main, CLOUD_KEYS.DAWN_EARLY.main, p);
+                cCloudShad = lerpColor(CLOUD_KEYS.NIGHT.shad, CLOUD_KEYS.DAWN_EARLY.shad, p);
+                starOp = 1.0 - p;
+            }
+            // 3. DAWN: BRIGHT (05:30 - 07:00) [Blue/Lemon]
+            else if (m < 420) {
+                let p = (m - 330) / 90;
+                currSkyT = lerpColor(SKY_KEYS.DAWN_EARLY.t, SKY_KEYS.DAWN_BRIGHT.t, p);
+                currSkyB = lerpColor(SKY_KEYS.DAWN_EARLY.b, SKY_KEYS.DAWN_BRIGHT.b, p);
+                cCloudMain = lerpColor(CLOUD_KEYS.DAWN_EARLY.main, CLOUD_KEYS.DAWN_BRIGHT.main, p);
+                cCloudShad = lerpColor(CLOUD_KEYS.DAWN_EARLY.shad, CLOUD_KEYS.DAWN_BRIGHT.shad, p);
+            }
+            // 4. DAY (07:00 - 16:00)
+            else if (m < 960) {
+                 // Slight interpolation to full day by 9:00, then hold
+                 let p = Math.min(1, (m - 420) / 120);
+                 currSkyT = lerpColor(SKY_KEYS.DAWN_BRIGHT.t, SKY_KEYS.DAY.t, p);
+                 currSkyB = lerpColor(SKY_KEYS.DAWN_BRIGHT.b, SKY_KEYS.DAY.b, p);
+                 cCloudMain = lerpColor(CLOUD_KEYS.DAWN_BRIGHT.main, CLOUD_KEYS.DAY.main, p);
+                 cCloudShad = lerpColor(CLOUD_KEYS.DAWN_BRIGHT.shad, CLOUD_KEYS.DAY.shad, p);
+            }
+            // 5. SUNSET: GOLDEN (16:00 - 18:00) [Rich Blue/Gold]
+            else if (m < 1080) {
+                let p = (m - 960) / 120;
+                currSkyT = lerpColor(SKY_KEYS.DAY.t, SKY_KEYS.GOLDEN.t, p);
+                currSkyB = lerpColor(SKY_KEYS.DAY.b, SKY_KEYS.GOLDEN.b, p);
+                cCloudMain = lerpColor(CLOUD_KEYS.DAY.main, CLOUD_KEYS.GOLDEN.main, p);
+                cCloudShad = lerpColor(CLOUD_KEYS.DAY.shad, CLOUD_KEYS.GOLDEN.shad, p);
+            }
+            // 6. SUNSET: BURNING (18:00 - 19:15) [Violet/Red] - NO PINK
+            else if (m < 1155) {
+                let p = (m - 1080) / 75;
+                currSkyT = lerpColor(SKY_KEYS.GOLDEN.t, SKY_KEYS.SUNSET_RED.t, p);
+                currSkyB = lerpColor(SKY_KEYS.GOLDEN.b, SKY_KEYS.SUNSET_RED.b, p);
+                cCloudMain = lerpColor(CLOUD_KEYS.GOLDEN.main, CLOUD_KEYS.SUNSET_RED.main, p);
+                cCloudShad = lerpColor(CLOUD_KEYS.GOLDEN.shad, CLOUD_KEYS.SUNSET_RED.shad, p);
+            }
+            // 7. TWILIGHT (19:15 - 20:30) [Dark Navy/Dull Crimson]
+            else {
+                let p = (m - 1155) / 75;
+                currSkyT = lerpColor(SKY_KEYS.SUNSET_RED.t, SKY_KEYS.TWILIGHT.t, p);
+                currSkyB = lerpColor(SKY_KEYS.SUNSET_RED.b, SKY_KEYS.TWILIGHT.b, p);
+                cCloudMain = lerpColor(CLOUD_KEYS.SUNSET_RED.main, CLOUD_KEYS.TWILIGHT.main, p);
+                cCloudShad = lerpColor(CLOUD_KEYS.SUNSET_RED.shad, CLOUD_KEYS.TWILIGHT.shad, p);
+                starOp = p;
+                
+                // Final blend to Pure Night at end
+                if(p > 0.7) { 
+                    let p2 = (p - 0.7) / 0.3;
+                    currSkyT = lerpColor(currSkyT, SKY_KEYS.NIGHT.t, p2);
+                    currSkyB = lerpColor(currSkyB, SKY_KEYS.NIGHT.b, p2);
+                    cCloudMain = lerpColor(cCloudMain, CLOUD_KEYS.NIGHT.main, p2);
+                    cCloudShad = lerpColor(cCloudShad, CLOUD_KEYS.NIGHT.shad, p2);
+                }
+            }
+
+
+
+
+
+
+// --- START OF CONTEXT ---
+            // --- [NEW] RAIN OVERRIDE (CLOUDY SKY) ---
+            if (S.farm.weather === 'rain') {
+                // 1. Force Sky to Grey/Slate
+                currSkyT = {r:70, g:80, b:90, a:1};     
+                currSkyB = {r:120, g:130, b:140, a:1};  
+
+                // 2. Force Clouds to Dark Grey
+                cCloudMain = {r:140, g:150, b:160, a:0.8}; 
+                cCloudShad = {r:60, g:70, b:80, a:0.5};
+
+                // 3. Hide Stars (starOp IS defined here, so this is safe)
+                starOp = 0; 
+                
+                // [DELETE THE LINES: sunOp = 0; and moonOp = 0; FROM HERE]
+            }
+
+// --- END OF NEW CODE ---
+
+
+
+
+
+
+
+
+            // DRAW SKY GRADIENT
+            let grad = ctx.createLinearGradient(0, skyTopY, 0, skyBaseY);
+            grad.addColorStop(0, colStr(currSkyT)); 
+            grad.addColorStop(1, colStr(currSkyB));
+            ctx.fillStyle = grad;
+            ctx.fillRect(skyStartX, skyTopY, skyW, skyH);
+
+            // --- E. CELESTIAL BODIES ---
+            ctx.save();
+            ctx.beginPath(); ctx.rect(skyStartX, skyTopY, skyW, skyH); ctx.clip();
+
+
+
+
+            // [New Code]
+// ...
+            let sunTx = -1, sunTy = -1, sunOp = 1.0;
+            let moonTx = -1, moonTy = -1, moonOp = 1.0;
+
+
+
+// --- PASTE THIS NEW LINE HERE ---
+            // [FIX] Hide bodies if raining
+            if (S.farm.weather === 'rain') { sunOp = 0; moonOp = 0; }
+// ------------------------------
+
+
+
+            // Updated coordinates: Shifted +15 to match the new Cove location
+            if (m >= 270 && m < 1155) { // Sun visible longer
+                let p = (m - 270) / 885; 
+                sunTx = lerp(257, 237, p); // <--- CHANGED (242->257, 222->237)
+                sunTy = 116 - Math.sin(p * Math.PI) * 15; 
+            }
+            if (m >= 1155 || m < 270) { // Moon visible
+                let nightM = (m >= 1155) ? (m - 1155) : (m + 285); 
+                let p = nightM / 555;
+                moonTx = lerp(257, 237, p); // <--- CHANGED (242->257, 222->237)
+                moonTy = 116 - Math.sin(p * Math.PI) * 15;
+            }
+
+            if (sunTy > 113) sunOp = Math.max(0, 1 - (sunTy - 113) / 3);
+// ...
+
+            // --- DRAW SUN (REALISTIC FLATTENING & REDDENING) ---
+            if (sunTx !== -1 && sunOp > 0) {
+                let bx = (sunTx * TILE) - S.cam.x + sx;
+                let by = (sunTy * TILE) - S.cam.y;
+                
+                // Height Ratio (0 = Zenith, 1 = Horizon)
+                let hRatio = Math.max(0, Math.min(1, (sunTy - 105) / 11));
+                
+                // Physics: Sun gets slightly "squashed" and bigger at horizon
+                let rScale = lerp(1.0, 1.4, hRatio);
+                let yScale = lerp(1.0, 0.85, hRatio); // Slight refraction flattening
+
+                // Colors: White/Yellow -> Deep Red
+                let cCore = lerpColor({r:255,g:255,b:220,a:1}, {r:255,g:200,b:50,a:1}, hRatio);
+                let cEdge = lerpColor({r:255,g:220,b:100,a:1}, {r:220,g:40,b:10,a:1}, hRatio); // Burning Red at end
+                let cGlow = lerpColor({r:255,g:255,b:255,a:0.3}, {r:255,g:60,b:0,a:0.5}, hRatio);
+
+                ctx.globalAlpha = sunOp;
+                
+                // Glow
+                ctx.fillStyle = colStr(cGlow); 
+                ctx.beginPath(); ctx.ellipse(bx, by, 60*rScale, 60*rScale*yScale, 0, 0, 6.28); ctx.fill();
+
+                // Sun Body
+                let gradSun = ctx.createRadialGradient(bx, by, 10*rScale, bx, by, 32*rScale);
+                gradSun.addColorStop(0, colStr(cCore));
+                gradSun.addColorStop(1, colStr(cEdge));
+                
+                ctx.fillStyle = gradSun;
+                ctx.beginPath(); ctx.ellipse(bx, by, 32*rScale, 32*rScale*yScale, 0, 0, 6.28); ctx.fill();
+
+                ctx.globalAlpha = 1.0;
+            }
+
+            // --- DRAW MOON (YOUR GEOMETRIC C-SHAPE) ---
+            if (moonTx !== -1 && moonOp > 0) {
+                let bx = (moonTx * TILE) - S.cam.x + sx;
+                let by = (moonTy * TILE) - S.cam.y;
+                ctx.globalAlpha = moonOp;
+
+                // Restored Orion/Crux Background
+                const drawSparkle = (tx, ty, s, alpha) => {
+                    let f = Math.sin(Date.now()/300 + tx)*0.2 + 0.8; 
+                    ctx.fillStyle = `rgba(255, 255, 255, ${alpha * f})`;
+                    ctx.beginPath();
+                    ctx.moveTo(tx, ty - s); ctx.quadraticCurveTo(tx+1, ty-1, tx+s*0.6, ty);
+                    ctx.quadraticCurveTo(tx+1, ty+1, tx, ty+s); ctx.quadraticCurveTo(tx-1, ty+1, tx-s*0.6, ty);
+                    ctx.quadraticCurveTo(tx-1, ty-1, tx, ty-s); ctx.fill();
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(tx, ty, s/4, 0, 6.28); ctx.fill();
+                };
+                // ORION
+                drawSparkle(bx - 160, by - 20, 10, 0.9); drawSparkle(bx - 148, by - 26, 10, 0.9); drawSparkle(bx - 136, by - 32, 10, 0.9); 
+                drawSparkle(bx - 175, by - 65, 14, 1.0); drawSparkle(bx - 115, by - 55, 12, 0.8); 
+                drawSparkle(bx - 170, by + 25, 12, 0.8); drawSparkle(bx - 125, by + 20, 16, 1.0);
+                // CRUX
+                drawSparkle(bx + 140, by + 40, 16, 1.0); drawSparkle(bx + 140, by - 20, 14, 0.9); 
+                drawSparkle(bx + 115, by + 10, 12, 0.9); drawSparkle(bx + 165, by + 5,  12, 0.9); drawSparkle(bx + 152, by + 22, 6,  0.7);
+
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1; ctx.beginPath();
+                ctx.moveTo(bx-175, by-65); ctx.lineTo(bx-160, by-20); ctx.moveTo(bx-115, by-55); ctx.lineTo(bx-136, by-32); 
+                ctx.moveTo(bx-160, by-20); ctx.lineTo(bx-170, by+25); ctx.moveTo(bx-136, by-32); ctx.lineTo(bx-125, by+20); 
+                ctx.moveTo(bx+140, by-20); ctx.lineTo(bx+140, by+40); ctx.moveTo(bx+115, by+10); ctx.lineTo(bx+165, by+5); ctx.stroke();
+
+                // THE MOON SHAPE
+                ctx.save(); ctx.translate(bx, by); ctx.rotate(-Math.PI / 4); 
+                let r1=40, r2=35, d=24;
+                let x = (r1*r1 - r2*r2 + d*d) / (2*d); let y = Math.sqrt(r1*r1 - x*x);
+                let t1 = Math.atan2(y, x); let t2 = Math.atan2(y, x - d);
+                ctx.beginPath(); ctx.arc(0, 0, r1, t1, -t1, false); ctx.arc(d, 0, r2, -t2, t2, true); ctx.closePath();
+                let grad = ctx.createRadialGradient(-10, 0, 5, 0, 0, r1);
+                grad.addColorStop(0.0, "#fff9c4"); grad.addColorStop(0.4, "#fbc02d"); grad.addColorStop(1.0, "#f57f17");
+                ctx.fillStyle = grad; ctx.shadowColor = "#fbc02d"; ctx.shadowBlur = 25; ctx.fill();
+                ctx.restore();
+                ctx.globalAlpha = 1.0;
+            }
+
+            // STARS (Denser, Twinkling, Varied Sizes)
+            if (starOp > 0) {
+                ctx.fillStyle = '#fff';
+                // INCREASED COUNT: 50 -> 200 for a starry night
+                // We use a fixed seed based on 'i' so stars don't jitter around
+                for(let i=0; i<200; i++) {
+                    // Random positions based on sine waves to look organic but deterministic
+                    let starX = skyStartX + Math.abs(Math.sin(i * 132.1)) * skyW;
+                    let starY = skyTopY + Math.abs(Math.cos(i * 94.5)) * skyH;
+                    
+                    // Random size: Some tiny (distance), some bright
+                    let size = (Math.sin(i) > 0.9) ? 1.5 : (Math.random() * 0.8 + 0.5);
+                    
+                    // Twinkle Speed varies per star
+                    let speed = (i % 2 === 0) ? 400 : 200;
+                    let twinkle = Math.sin((Date.now() / speed) + i);
+                    
+                    // Opacity Logic
+                    let alpha = (twinkle > 0 ? 0.9 : 0.4) * starOp;
+                    
+                    ctx.globalAlpha = alpha;
+                    ctx.beginPath(); 
+                    ctx.arc(starX, starY, size, 0, 6.28); 
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1.0;
+            }
+            ctx.restore();
+
+
+
+
+
+
+
+// --- F. VOLUMETRIC CLOUDS (Unified Path Fix + Organic Shape) ---
+            ctx.save(); 
+            ctx.beginPath(); ctx.rect(skyStartX, skyTopY, skyW, skyH); ctx.clip(); 
+
+            let time = Date.now() / 100; 
+            
+            // Cloud definitions (Positions & Seeds)
+            let clouds = [
+                { x: 0.1, y: 0.4, s: 1.0, spd: 0.5 }, 
+                { x: 0.35, y: 0.6, s: 0.9, spd: 0.8 }, 
+                { x: 0.6, y: 0.25, s: 1.4, spd: 0.4 }, 
+                { x: 0.85, y: 0.5, s: 1.1, spd: 0.6 }  
+            ];
+
+            // Helper: Draws the cloud shape (without filling) into the current path
+            // We use 5 overlapping circles to create a "Cumulus" shape
+            const traceCloudShape = (cx, cy, s) => {
+                let r = 35 * s; // Base radius scale
+                
+                // 1. Center Main Puff
+                ctx.arc(cx, cy, r, 0, 6.28); 
+                // 2. Left Base Puff
+                ctx.arc(cx - r*0.85, cy + r*0.2, r*0.7, 0, 6.28);
+                // 3. Right Base Puff
+                ctx.arc(cx + r*0.85, cy + r*0.2, r*0.7, 0, 6.28);
+                // 4. Top-Left Filler
+                ctx.arc(cx - r*0.45, cy - r*0.5, r*0.55, 0, 6.28); 
+                // 5. Top-Right Filler
+                ctx.arc(cx + r*0.45, cy - r*0.5, r*0.55, 0, 6.28);
+                // 6. Bottom Flattener (Subtle wide ellipse implication)
+                ctx.arc(cx, cy + r*0.3, r*0.5, 0, 6.28);
+            };
+
+
+
+
+           // [NEW] RAINY SKY: HEAVY STORM (4 LAYERS + LOW MIST)
+            if (S.farm.weather === 'rain') {
+                
+                // 1. GRADIENT BACKGROUND
+                let rainGrad = ctx.createLinearGradient(0, skyTopY, 0, skyBaseY);
+                rainGrad.addColorStop(0, '#263238'); // Dark Slate Top
+                rainGrad.addColorStop(1, '#78909c'); // Blue Grey Horizon
+                
+                ctx.fillStyle = rainGrad;
+                ctx.fillRect(skyStartX, skyTopY, skyW, skyH);
+
+                let stormT = Date.now() / 150; 
+
+                // 2. LAYERED STORM RENDERER
+                const drawStratusLayer = (yOff, speed, scale, colorStr, density) => {
+                    ctx.fillStyle = colorStr;
+                    // Extra wide rendering to prevent gaps
+                    let totalW = skyW + 800; 
+                    let spacing = totalW / density;
+                    
+                    for (let i = 0; i < density + 3; i++) { 
+                        let moveX = (stormT * speed) + (i * spacing);
+                        // Shift x start position left to cover edge
+                        let finalX = skyStartX + (moveX % totalW) - 400; 
+                        
+                        let bob = Math.sin((stormT/40) + i) * 15;
+                        let finalY = skyTopY + yOff + bob;
+
+                        ctx.save();
+                        ctx.translate(finalX, finalY);
+                        // SQUASH: Wide and flat (Stratus look)
+                        ctx.scale(2.0, 0.8); 
+                        
+                        ctx.beginPath();
+                        traceCloudShape(0, 0, scale);
+                        ctx.fill();
+                        
+                        ctx.restore();
+                    }
+                };
+
+                // LAYER 1: High Back (Darkest, Slow)
+                drawStratusLayer(120, 0.5, 1.8, '#37474f', 4);
+
+                // LAYER 2: Mid High (Dark Grey)
+                drawStratusLayer(300, 0.8, 1.6, '#455a64', 5);
+
+                // LAYER 3: Mid Low (Lighter Grey, covers horizon)
+                drawStratusLayer(480, 1.5, 1.5, '#546e7a', 5);
+
+                // LAYER 4: Foreground Mist (Very Low, Transparent, Fast)
+                // This sits near the bottom of the skybox (yOff 600)
+                drawStratusLayer(600, 3.0, 1.3, 'rgba(207, 216, 220, 0.4)', 6);
+
+            } else {
+                // === SUNNY MODE: 4 HAPPY CLOUDS ===
+                clouds.forEach(c => {
+                    let moveX = (c.x * skyW) + (time * c.spd); 
+                    let finalX = skyStartX + (moveX % (skyW + 400)) - 200; 
+                    let finalY = skyTopY + (c.y * skyH);
+                    
+                    // Shadow
+                    ctx.beginPath();
+                    traceCloudShape(finalX + 8, finalY + 8, c.s); 
+                    ctx.fillStyle = (typeof cCloudShad !== 'undefined') ? `rgba(${cCloudShad.r},${cCloudShad.g},${cCloudShad.b},${cCloudShad.a})` : 'rgba(0,0,0,0.2)';
+                    ctx.fill(); 
+
+                    // Body
+                    ctx.beginPath();
+                    traceCloudShape(finalX, finalY, c.s);
+                    ctx.fillStyle = (typeof cCloudMain !== 'undefined') ? `rgba(${cCloudMain.r},${cCloudMain.g},${cCloudMain.b},${cCloudMain.a})` : '#fff';
+                    ctx.fill(); 
+                });
+            }
+
+            ctx.restore();
+        }
+
+
+// --------------------------------
+
+
+
+
+
+
+
+// --- [PASTE STEP 1] INSERT MASK HERE (LAYER 0.5) ---
+        // This draws the blue shape FIRST, so it sits behind the tiles.
+        // [NEW CODE]
+// ...
+// --- [PASTE STEP 1] INSERT MASK HERE (LAYER 0.5) ---
+        // This draws the blue shape FIRST, so it sits behind the tiles.
+        // SHIFTED RIGHT BY 15 (207 -> 222)
+        let cvStartX = 222 * TILE - S.cam.x + sx; 
+        let cvBaseY  = 120 * TILE - S.cam.y;      
+        let cvWidth  = 51 * TILE;                 
+        let endX     = cvStartX + cvWidth;        
+        
+        if (endX > 0 && cvStartX < cvs.width) {
+// ...
+
+
+
+
+            ctx.fillStyle = '#01579b'; // Deep Blue Base
+            ctx.beginPath();
+            ctx.moveTo(cvStartX, cvBaseY);
+            let peakY = cvBaseY - (7.0 * TILE); 
+            ctx.bezierCurveTo(
+                cvStartX + (12 * TILE), peakY, 
+                endX - (12 * TILE),     peakY, 
+                endX,                   cvBaseY 
+            );
+            ctx.lineTo(endX, cvBaseY + 3 * TILE); 
+            ctx.lineTo(cvStartX, cvBaseY + 3 * TILE);
+            ctx.fill();
+        }
+// ----------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
         // --- LAYER 1: MAP TILES ---
         for(let y=cy; y<ey; y++) for(let x=cx; x<ex; x++) {
             if(x<0||y<0||x>=MAP_S||y>=MAP_S) continue;
             let t = S.map[y*MAP_S+x];
             let px = Math.floor(x*TILE-S.cam.x+sx), py = Math.floor(y*TILE-S.cam.y);
+
+
+
+
+
+// --- DYNAMIC COVE MASK (Replaces Green Patch & Gaps) ---
+            // 1. Check Range (222 to 272)
+            if (x >= 222 && x <= 272 && y >= 105 && y <= 121) {
+                const getBezierY = (worldX) => {
+                    let relX = worldX - 222;
+                    const p1x=12, p2x=39, p3x=51;
+                    let t = relX / 51.0; 
+                    for(let i=0; i<5; i++) { 
+                        let inv = 1-t;
+                        let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                        let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                        if (Math.abs(slope) > 0.001) t -= (bx - relX) / slope;
+                    }
+                    let inv = 1-t;
+                    let by = (3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0);
+                    return 120 - by; 
+                };
+                let curveLimitY = getBezierY(x);
+                // If tile is physically inside/above curve -> Transparent
+                if ((y + 1) < curveLimitY) continue; 
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // [NEW] TEXTURE MATH (Matches Main Game)
             let seed = Math.abs(Math.sin(x * 12.9898 + y * 78.233));
             let r1 = (seed * 100) % 1;
@@ -2766,19 +4351,186 @@ function draw() {
 
 
 
-            // [FIX 1] VOID LOGIC: Water (0) is BLACK unless inside the Farm boundaries.
-            // The Farm is located between X:120-160 and Y:120-160.
-            if (t === 0) {
-                // Check if this tile is inside the Farm Yard
-                let inFarm = (x >= 120 && x < 160 && y >= 120 && y < 160);
-                
-                // If it is NOT in the farm, draw it as Void (Black)
-                if (!inFarm) {
-                    ctx.fillStyle = '#050505'; // Black Void
+
+
+
+
+
+
+
+
+
+// --- NEW: ROCKY SHORE TILES (Specific Coordinates) ---
+            
+            // 1. BASE SHOULDERS (Top Row Y=120)
+            // Keeps the top wall line intact
+            let baseShoulder = (y === 120 && ((x >= 200 && x <= 221) || (x >= 273 && x <= 294)));
+
+            // 2. CHECK OUR CUSTOM PATCH LIST
+            // This checks the specific coordinates you listed in Step 1
+            let isPatch = PATCH_TILES.has(`${x},${y}`);
+
+            // 3. COMBINE
+            // If it's a top wall OR a patch tile, draw it as a rock
+            let isRockyShore = baseShoulder || isPatch;
+
+
+
+
+
+
+
+            if (isRockyShore) {
+                // 1. Base Ocean Color (Deep Navy)
+                ctx.fillStyle = '#01579b'; 
+                ctx.fillRect(px, py, TILE+1, TILE+1);
+
+                let rockSeed = Math.sin(x * 43758.5453 + y * 23421.6789);
+
+                // --- LAYER A: ORIGINAL FRECKLES (Texture) ---
+                let freckleCount = 4 + Math.floor(Math.abs(rockSeed) * 4); // 4-8 specks
+                for(let i=0; i<freckleCount; i++) {
+                    let rSeed = Math.abs(Math.sin(rockSeed + i * 99.9));
+                    let rx = px + (rSeed * (TILE - 6)) + 3;
+                    let ry = py + ((rSeed * 100) % (TILE - 6)) + 3;
+                    let size = 1.5 + (rSeed * 2.0); // Small dots
+
+                    if (i % 2 === 0) ctx.fillStyle = 'rgba(38, 50, 56, 0.5)'; // Dark
+                    else ctx.fillStyle = 'rgba(207, 216, 220, 0.3)'; // Light
+                    
+                    ctx.beginPath(); ctx.arc(rx, ry, size, 0, 6.28); ctx.fill();
+                }
+
+                // --- LAYER B: MINI SEA ROCKS (3D Features) ---
+                let bigCount = 1 + Math.floor(Math.abs(rockSeed) * 2); // 1-2 big rocks per tile
+                for(let i=0; i<bigCount; i++) {
+                    let rSeed = Math.abs(Math.sin(rockSeed + i * 12.34));
+                    // Centralize slightly so they don't clip edges
+                    let rx = px + 10 + (rSeed * (TILE - 20));
+                    let ry = py + 10 + ((rSeed * 100) % (TILE - 20));
+                    let size = 5 + (rSeed * 4); // 5px to 9px
+
+                    // TYPE A: JAGGED SLATE
+                    if (i % 2 === 0) {
+                        ctx.fillStyle = '#263238'; // Dark Obsidian
+                        ctx.beginPath();
+                        ctx.moveTo(rx, ry - size); 
+                        ctx.lineTo(rx + size/1.5, ry + size/2); 
+                        ctx.lineTo(rx - size/1.5, ry + size/2); 
+                        ctx.fill();
+                        // Edge Highlight
+                        ctx.strokeStyle = 'rgba(255,255,255,0.1)'; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.moveTo(rx, ry-size); ctx.lineTo(rx+size/1.5, ry+size/2); ctx.stroke();
+                    } 
+                    // TYPE B: SUBMERGED BOULDER
+                    else {
+                        ctx.fillStyle = '#546e7a'; // Blue Grey
+                        ctx.beginPath();
+                        ctx.ellipse(rx, ry, size, size * 0.7, rSeed, 0, 6.28);
+                        ctx.fill();
+                        // Shadow
+                        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                        ctx.beginPath(); ctx.arc(rx + 2, ry + 2, size/2, 0, 6.28); ctx.fill();
+                    }
+                }
+
+                continue; // Skip standard tile rendering
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// --- MASTER VOID LOGIC (Clean Version) ---
+            
+            // 1. LEFT SIDE (Transition Area x < 120)
+            if (x < 120) {
+                if (t !== 9 && t !== 10) { 
+                    ctx.fillStyle = '#050505'; 
                     ctx.fillRect(px, py, TILE+1, TILE+1);
-                    continue; // Skip the rest (don't draw blue water)
+                    continue; 
                 }
             }
+            
+            // 2. RIGHT SIDE (World End)
+            if (x >= 295) {
+                ctx.fillStyle = '#050505'; 
+                ctx.fillRect(px, py, TILE+1, TILE+1);
+                continue; 
+            }
+
+
+
+// [NEW CODE]
+// ...
+            // 3. TOP & BOTTOM (Sky, Mask, & Void)
+            
+            // A. Calculate Top Limit (Dynamic for Cove)
+            // SHIFTED RIGHT +15 (208->223, 240->255)
+            let topLimit = 120; 
+            if (x >= 223 && x <= 255) {
+                let progress = (x - 223) / 32.0;
+                let curve = Math.sin(progress * Math.PI) * 4.0;
+                topLimit = Math.floor(120 - curve); 
+            }
+
+           // B. Define Exclusion Zones
+            
+            // CHANGE THIS LINE: 275 -> 295
+            // This prevents the "Void" (Black) from covering the sky
+            let inSky  = (x >= 200 && x <= 295 && y >= 104 && y < 120);
+            
+            // SHIFTED RIGHT +15 (207->222, 258->273)
+            let inMask = (x >= 222 && x <= 273 && y >= 112 && y <= 120);
+
+            // C. Draw Void ONLY if we are NOT in Sky AND NOT in Mask
+// ...            // C. Draw Void ONLY if we are NOT in Sky AND NOT in Mask
+            if ((y < topLimit && !inMask && !inSky) || y >= 160) {
+                ctx.fillStyle = '#050505'; 
+                ctx.fillRect(px, py, TILE+1, TILE+1);
+                continue; 
+            }
+            // -----------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // --------------------------------------
+
+
+
+
+
+
+
+
+
 
             // [FIX 2] DRAW BRIDGE CONNECTOR (Tile ID 10) - Matches Main Game Dirt
             if (t === 10) {
@@ -2795,60 +4547,277 @@ function draw() {
                 continue;
             }
 
-            // A. SEAMLESS WATER LOGIC (Normal Farm Water)
+
+
+          
+
+
+
+
+// =========================================================
+            // === NEW: DYNAMIC TIDE & OCEAN LOGIC (Pixel Perfect) ===
+            // =========================================================
+
+           // =========================================================
+            // === NEW: DYNAMIC TIDE & OCEAN LOGIC (Upgraded Visuals) ===
+            // =========================================================
+
+            // =========================================================
+            // === NEW: SAILING OCEAN & DYNAMIC TIDE (High Quality) ===
+            // =========================================================
+
+          // =========================================================
+            // === NEW: CALM TROPICAL OCEAN (Soothing Visuals) ===
+            // =========================================================
+
+            // =========================================================
+            // === NEW: MULTI-LAYERED REALISTIC OCEAN ===
+            // =========================================================
+
             const isBridgeZone = (x >= 145 && x <= 150 && y >= 134 && y <= 138);
+            const isOceanZone = (x > 160); 
 
-            if (t === T.WATER && !isBridgeZone) {
-                // Solid Blue Base (No outline)
-                ctx.fillStyle = '#4fc3f7'; 
-                ctx.fillRect(px, py, TILE+1, TILE+1);
+            // 1. OCEAN (Optimized: "Full-Fill" Culling + Step 10)
+            if (isOceanZone && (t === T.WATER || t === 3)) { 
                 
-                // Static Texture (No flashing)
-                ctx.fillStyle = '#81d4fa'; 
-                if ((x * y) % 3 === 0) ctx.fillRect(px + 10, py + 15, 12, 3);
-                else if ((x * y) % 3 === 1) ctx.fillRect(px + 25, py + 35, 8, 3);
-            } 
-            else if (isBridgeZone) {
-                 // Darker water under bridge
-                 ctx.fillStyle = '#0288d1'; ctx.fillRect(px, py, TILE+1, TILE+1);
-                 ctx.fillStyle = 'rgba(255,255,255,0.2)'; 
-                 ctx.fillRect(px, py+10, TILE, 2); ctx.fillRect(px, py+30, TILE, 2);
-            
+                // A. Base Sand
+                ctx.fillStyle = '#fff9c4'; ctx.fillRect(px, py, TILE+1, TILE+1);
+                
+                // B. Tide Math
+                let time = Date.now() / 2000; 
+                let normY = (y - 120) / 40; 
+                let curveOffset = Math.sin(normY * Math.PI) * 6;
+                let baseShoreX = 188; 
+                
+                let worldShoreX = ((baseShoreX - curveOffset) * TILE) + (Math.sin(time) * 30);
+                let dist = (x * TILE) - worldShoreX; 
 
-} else {
-                    // Normal Ground Logic
+                // --- OPTIMIZED SKIRT RENDERER ---
+                const drawSkirt = (offsetX, color, amp, freq, spd, jaggedness) => {
+                    let startScreenX = (worldShoreX + offsetX) - S.cam.x + sx;
                     
-                    if (t === T.GRASS) {
-                        // --- 1. FANCY FARM GRASS ---
-                        ctx.fillStyle = '#43a047'; // Soft Green
-                        ctx.fillRect(px, py, TILE+1, TILE+1); // +1 to hide grid lines
+                    // OPTIMIZATION A: If wave hasn't reached this tile yet, skip
+                    if (startScreenX > px + TILE + 20) return; 
 
-                        // Grass "Tufts"
-                        let seed = (x * 37) + (y * 13);
+                    // OPTIMIZATION B: "Full Fill"
+                    // If the wave edge is way to the left of this tile, the tile is 100% covered.
+                    // Just draw a rect and skip the heavy math loop!
+                    if (startScreenX < px - 20) {
+                         ctx.fillStyle = color; ctx.fillRect(px, py, TILE+1, TILE+1); return;
+                    }
+
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    
+                    // OPTIMIZATION C: Step 10 (was 5). Huge FPS boost.
+                    for (let i = 0; i <= TILE; i+=10) { 
+                        let worldY = (y * TILE) + i; 
                         
-                        // Type A: Darker Green
-                        if (seed % 3 === 0) {
-                            ctx.fillStyle = '#2e7d32'; 
-                            let ox = (seed % 20) + 10;
-                            let oy = (seed % 20) + 10;
-                            ctx.fillRect(px + ox, py + oy, 2, 4);
-                            ctx.fillRect(px + ox + 3, py + oy + 1, 2, 3);
-                        }
-                        // Type B: Lighter Tip
-                        else if (seed % 5 === 0) {
-                            ctx.fillStyle = '#81c784'; 
-                            let ox = (seed % 30) + 5;
-                            ctx.fillRect(px + ox, py + ox, 3, 3);
+                        // Base Wave
+                        let wave = Math.sin((worldY / freq) + (time * spd) + (offsetX*0.05));
+                        
+                        // Simplified Jagged Math
+                        if (jaggedness > 0) {
+                            wave += Math.sin((worldY / 5) + time*5) * jaggedness;
                         }
 
-                    } else {
-                        // --- 2. BEDROCK / VOID (RESTORED TO BLACK) ---
-                        // This handles the "Outside World"
-                        // We use a very dark grey/black so it fades into the background
-                        ctx.fillStyle = '#111'; 
-                        ctx.fillRect(px, py, TILE, TILE);
+                        let drawX = startScreenX + (wave * amp);
+                        let drawY = py + i;
+                        
+                        if (i===0) ctx.moveTo(drawX, drawY);
+                        else ctx.lineTo(drawX, drawY);
+                    }
+                    
+                    ctx.lineTo(px + TILE + 1, py + TILE); 
+                    ctx.lineTo(px + TILE + 1, py);        
+                    ctx.fill();
+                };
+
+                // --- C. DRAW LAYERS (Bottom to Top) ---
+
+                // 1. WHITE FOAM
+                drawSkirt(0, '#FFFFFF', 6, 20, 2.0, 0.6);
+
+                // 2. LIGHT BLUE
+                drawSkirt(20, '#4dd0e1', 7, 30, 1.5, 0.2);
+
+                // 3. MEDIUM BLUE
+                drawSkirt(90, '#0277bd', 8, 50, 1.0, 0.0);
+
+                // 4. DEEP NAVY
+                drawSkirt(200, '#01579b', 10, 70, 0.8, 0.0);
+
+
+                // --- D. BIG BELT ---
+                let bigWaveCycle = (Date.now() / 5000) % 1; 
+                let bigBeltOffset = 400 - (bigWaveCycle * 380); 
+                let bigBeltX = (worldShoreX + bigBeltOffset) - S.cam.x + sx;
+                
+                // Only calc if visible on this tile
+                if (bigBeltX >= px - 15 && bigBeltX <= px + TILE + 15) {
+                    let alpha = (bigWaveCycle > 0.85) ? (1.0 - bigWaveCycle) * 6 : 0.6;
+                    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+                    ctx.lineWidth = 3;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    // Step 10 for performance
+                    for (let i = 0; i <= TILE; i+=10) {
+                        let worldY = (y * TILE) + i;
+                        let curve = Math.sin((worldY/60) - time*4) * 8;
+                        let bx = bigBeltX + curve;
+                        if (i===0) ctx.moveTo(bx, py+i); else ctx.lineTo(bx, py+i);
+                    }
+                    ctx.stroke();
+                }
+
+
+                // --- E. SHORT BREAKERS ---
+                let laneIndex = Math.floor(y / 5);
+                let laneSeed = Math.sin(laneIndex * 999.1); 
+                
+                if (Math.abs(laneSeed) > 0.6) {
+                    let laneSpeed = 3000 + (Math.abs(laneSeed) * 2000); 
+                    let laneCycle = (Date.now() / laneSpeed + laneSeed) % 1; 
+                    let shortOffset = 350 - (laneCycle * 300);
+                    let shortBeltX = (worldShoreX + shortOffset) - S.cam.x + sx;
+
+                    if (shortBeltX >= px - 15 && shortBeltX <= px + TILE + 15) {
+                        let sAlpha = 0.5;
+                        if (laneCycle < 0.1) sAlpha = laneCycle * 5;
+                        if (laneCycle > 0.9) sAlpha = (1 - laneCycle) * 5;
+
+                        let relY = y % 5; 
+                        let taper = 1;
+                        if (relY === 0 || relY === 4) taper = 0.5; 
+
+                        ctx.strokeStyle = `rgba(255, 255, 255, ${sAlpha * taper})`;
+                        ctx.lineWidth = 3 * taper; 
+                        ctx.lineCap = 'round';
+                        ctx.beginPath();
+                        // Step 10 for performance
+                        for (let i = 0; i <= TILE; i+=10) {
+                            let worldY = (y * TILE) + i;
+                            let curve = Math.sin((worldY/30) - time*6) * 6;
+                            let bx = shortBeltX + curve;
+                            if (i===0) ctx.moveTo(bx, py+i); else ctx.lineTo(bx, py+i);
+                        }
+                        ctx.stroke();
                     }
                 }
+
+
+                // --- F. MINI SKIRTS ---
+                if (dist > 250) {
+                    let seed = Math.sin(x * 12.9898 + y * 78.233);
+                    if (seed > 0.6) {
+                        let bob = Math.sin(time*2 + x) * 5;
+                        let wx = px + 10 + (seed * 10);
+                        let wy = py + 25 + bob;
+                        // Simplified curve drawing
+                        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(wx, wy);
+                        ctx.quadraticCurveTo(wx + 10, wy + 5, wx + 20, wy);
+                        ctx.stroke();
+                    }
+                }
+
+                continue; 
+            }
+
+
+
+
+
+
+
+            // 2. RIVER (Standard)
+            if (t === T.WATER && !isOceanZone && !isBridgeZone) {
+                ctx.fillStyle = '#4fc3f7'; ctx.fillRect(px, py, TILE+1, TILE+1);
+                ctx.fillStyle = '#81d4fa'; 
+                if ((x*y)%3===0) ctx.fillRect(px+10, py+15, 12, 3);
+                else if ((x*y)%3===1) ctx.fillRect(px+25, py+35, 8, 3);
+            }
+            // 3. BRIDGE WATER (Visual Only)
+            else if (isBridgeZone && t === T.WATER) {
+                 ctx.fillStyle = '#4fc3f7'; ctx.fillRect(px, py, TILE+1, TILE+1);
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // 4. LAND
+            else {
+                if (t === T.GRASS) {
+                    ctx.fillStyle = '#43a047'; ctx.fillRect(px, py, TILE+1, TILE+1);
+                    let seed = (x * 37) + (y * 13);
+                    if (seed % 3 === 0) {
+                        ctx.fillStyle = '#2e7d32'; 
+                        let ox=(seed%20)+10; let oy=(seed%20)+10; ctx.fillRect(px+ox, py+oy, 2, 4); ctx.fillRect(px+ox+3, py+oy+1, 2, 3);
+                    } else if (seed % 5 === 0) {
+                        ctx.fillStyle = '#81c784'; let ox=(seed%30)+5; ctx.fillRect(px+ox, py+ox, 3, 3);
+                    }
+                } else if (t === T.BEDROCK) {
+                   // 1. Check Mask
+                    let isMask = (x >= 207 && x <= 258 && y >= 112 && y <= 120);
+                    
+                    // 2. Check Sky - CHANGE THIS LINE (275 -> 295):
+                    // This tells the game: "Don't draw black bedrock here, show the sky."
+                    let isSky  = (x >= 200 && x <= 295 && y >= 104 && y < 120);
+
+                    if (isMask || isSky) {
+                        continue; 
+                    }
+                    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                    // ------------------------------------
+
+                    ctx.fillStyle = '#111'; ctx.fillRect(px, py, TILE, TILE);
+                }
+
+
+
+
+
+
+
+            }
+
+
+
+
+
 
 
             // B. GRASS DOTS (Restored!)
@@ -2890,17 +4859,35 @@ function draw() {
 
 
 // [FIX 2] DRAW BRIDGE (Tile ID 10)
-            if (t === 10) {
-                ctx.fillStyle = '#5d4037'; // Same solid color as index.html
-                ctx.fillRect(px, py, TILE, TILE);
-                continue;
-            }
+            // [FIX 2] DRAW BRIDGE CONNECTOR (Tile ID 10) - Matches Main Game Dirt
+if (t === 10) {
+    ctx.fillStyle = '#5d4037'; 
+    ctx.fillRect(px, py, TILE, TILE);
+    continue;
+}
 
 
 
 
             // D. ROAD & BRIDGE (VINTAGE ARCH - FIXED RAILS)
             if (t === T.ROAD) {
+
+
+// [INSERT 1] Restore Original Dark Water Under Bridge
+                if (isBridgeZone) {
+                     // Your original dark blue
+                     ctx.fillStyle = '#0288d1'; 
+                     ctx.fillRect(px, py, TILE+1, TILE+1);
+                     
+                     // Your original reflection lines
+                     ctx.fillStyle = 'rgba(255,255,255,0.2)'; 
+                     ctx.fillRect(px, py+10, TILE, 2); 
+                     ctx.fillRect(px, py+30, TILE, 2);
+                }
+
+
+
+
                 if (isBridgeZone) {
                     // 1. Math for the Curve
                     let dist = Math.abs(x - 147.5); 
@@ -2909,9 +4896,10 @@ function draw() {
 
                     // 2. Dark Structure & Shadow (Draw this everywhere to make bridge look solid)
                     // Shadow on water
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillStyle = 'rgba(0,0,0,0.25)';
                     ctx.fillRect(px + 10, py + 25, TILE - 5, TILE - 10);
-                    // Dark wood support underneath
+                    
+                    // Dark supports
                     ctx.fillStyle = '#2e1c16'; 
                     ctx.fillRect(px, by + 10, TILE, (py - by) + 10);
 
@@ -3072,6 +5060,25 @@ function draw() {
 
 
             }
+
+
+
+
+
+
+
+
+
+
+
+// -----------------------------------------------------------
+
+    // --- LAYER 2: ENTITIES (Sorted) ---
+    // ... rest of code ...
+
+
+
+
     // --- LAYER 2: ENTITIES (Sorted) ---
 
 
@@ -3135,6 +5142,13 @@ function draw() {
                     return isInside ? -10000 : (e.y + e.h); 
                 }
                 
+
+		// [FIX] CAMPFIRE DEPTH
+                // Treat the fire as only 1 tile high for sorting, so player can stand 
+                // on the bottom half (side) and still appear "in front" of it.
+                if (e.kind === 'campfire') return e.y + 1.0;
+
+
                 // Bed (Draw behind player if they stand on it)
                 if (e.kind === 'Bed') return e.y + 0.1; 
                 
@@ -3182,10 +5196,425 @@ function draw() {
 
 
 // 1. PLAYER (Logic Block)
+           // 1. PLAYER (Logic Block)
             if(e.type === 'p') {
                 
+
+
+
+// --- FIX: PREVENT DOUBLE DRAW IN COVE ---
+                // If we are in the Redraw Region (Cove/Sky) AND it is Night/Sunset,
+                // skip this standard draw. Layer 4.5 will handle it on top of the darkness.
+                let t = S.farm.time;
+                // Tint active from 15:00 (900) to 06:00 (360)
+                let isTinted = (t >= 900 || t < 360); 
+                let inRedrawZone = (S.p.x >= 195 && S.p.x <= 295 && S.p.y <= 122);
+
+                if (isTinted && inRedrawZone) return;
+                // ----------------------------------------
+
+
+
+
+
+                // [NEW LINE] Add this flag variable
+                let heroDrawn = false; 
+
+// Z. DRAW BOAT UNDER PLAYER
+                // Z. DRAW BOAT UNDER PLAYER (STEEPER ANGLES + FIXED HANDLES)
+                if (S.p.isBoating) {
+                    ctx.save();
+
+                    // [NEW BLOCK] Paste this Helper Function here
+                    const injectHero = () => {
+                        ctx.save(); 
+                        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset Transform
+                        drawHero(x, y); 
+                        heroDrawn = true; // Mark as done
+                        ctx.restore(); // Restore Boat Transform
+                    }; 
+                    // ---------------------------------------------
+                    
+                    
+                    
+                    // 1. POSITIONING
+                    ctx.translate(x + 25, y + 45); 
+                    ctx.scale(1.6, 1.6); 
+
+                    // 2. ANIMATION
+                    let time = Date.now();
+                    let dir = S.p.dir;
+                    
+                    let bob = Math.sin(time / 450) * 1.5; 
+                    let roll = Math.sin(time / 700) * 0.04; 
+                    
+                    let isMoving = (S.input.keys['arrowup'] || S.input.keys['arrowdown'] || 
+                                    S.input.keys['arrowleft'] || S.input.keys['arrowright']);
+                    
+                    let rowCycle = isMoving ? (time / 220) : 1.5; 
+                    let oarSwing = Math.sin(rowCycle) * 0.6; // Forward/Back
+                    let oarLift = Math.cos(rowCycle); // Up/Down
+                    
+                    // 3. PALETTE
+                    const C_HULL_BASE  = '#5d4037'; 
+                    const C_HULL_DARK  = '#3e2723'; 
+                    const C_HULL_TRIM  = '#8d6e63'; 
+                    const C_INT_DARK   = '#281a17'; 
+                    const C_RIBS       = '#4e342e'; 
+                    const C_OAR_SHAFT  = '#d7ccc8'; 
+                    const C_OAR_BLADE  = '#a1887f'; 
+                    const C_BRASS      = '#ffb74d'; 
+                    
+                    const WATER_LEVEL = 10; 
+
+                    // Wake
+                    ctx.save();
+                    ctx.scale(1, 0.3);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.beginPath(); ctx.arc(0, 40, 40 + Math.sin(time/300)*3, 0, 6.28); ctx.fill();
+                    ctx.restore();
+
+                    ctx.rotate(roll);
+                    ctx.translate(0, bob);
+
+                    // --- HELPER: Draw Blade ---
+                    const drawBlade = (ctxRef, isSubmerged) => {
+                        ctxRef.beginPath();
+                        ctxRef.moveTo(-2, 0);   
+                        ctxRef.lineTo(-4, 14);  
+                        ctxRef.lineTo(4, 14);   
+                        ctxRef.lineTo(2, 0);    
+                        ctxRef.closePath();
+                        
+                        if (isSubmerged) {
+                            ctxRef.fillStyle = 'rgba(62, 39, 35, 0.5)'; 
+                            ctxRef.fill();
+                            ctxRef.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+                            ctxRef.lineWidth = 1;
+                            ctxRef.beginPath(); ctxRef.moveTo(-6, 2); ctxRef.lineTo(6, 2); ctxRef.stroke();
+                        } else {
+                            ctxRef.fillStyle = C_OAR_BLADE;
+                            ctxRef.fill();
+                            ctxRef.fillStyle = 'rgba(0,0,0,0.1)';
+                            ctxRef.fillRect(-0.5, 0, 1, 14);
+                        }
+                    };
+
+                    // ==========================================
+                    // === SIDE VIEW (Left/Right) ===
+                    // ==========================================
+                    // === SIDE VIEW (Left/Right) - 3 SEGMENT OARS ===
+                    // ==========================================
+                    // ==========================================
+                    // === SIDE VIEW (Left/Right) - FIXED VISIBILITY ===
+                    // ==========================================
+                    if (dir === 1 || dir === 3) { 
+                        let flip = (dir===3) ? -1 : 1;
+                        ctx.scale(flip, 1);
+
+                        const drawSideOar = (isFar) => {
+                            // 1. ANIMATION & ANGLE
+                            let rowCycle = isMoving ? (time / 220) : 0;
+                            let baseAngle = 0.55; 
+                            let swing = isMoving ? Math.sin(rowCycle) * 0.5 : 0;
+                            let angle = baseAngle + swing;
+                            if (!isFar) angle += 0.1; 
+
+                            let dx = Math.cos(angle);
+                            let dy = Math.sin(angle);
+
+                            let px = -4; 
+                            let py = -6;
+                            
+                            // Water Line (Y-coord relative to pivot/boat center where water starts)
+                            let waterLine = 5;
+
+                           // 2. SEGMENT 1: HANDLE (Dark Wood)
+                            // Updated to 12 to match Front View proportions
+                            let handleLen = 12;
+                            ctx.strokeStyle = '#3e2723'; 
+                            ctx.lineWidth = 2;
+                            ctx.lineCap = 'round';
+                            ctx.beginPath();
+                            ctx.moveTo(px, py); 
+                            ctx.lineTo(px - (dx * handleLen), py - (dy * handleLen)); 
+                            ctx.stroke();
+
+
+                            // 3. SEGMENT 2: SHAFT (Light Wood)
+                            let stickLen = 36;
+                            let tipX = px + (dx * stickLen);
+                            let tipY = py + (dy * stickLen);
+                            
+                            // --- VISIBILITY FIX ---
+                            // If this is the FAR oar and it goes underwater, clip the shaft.
+                            let drawTipX = tipX;
+                            let drawTipY = tipY;
+                            let isSubmerged = (tipY > waterLine);
+
+                            if (isFar && isSubmerged) {
+                                // Calculate where the stick hits the water line
+                                // t = (waterLine - startY) / (endY - startY)
+                                let t = (waterLine - py) / (tipY - py);
+                                drawTipX = px + (dx * stickLen * t);
+                                drawTipY = waterLine;
+                            }
+
+                            ctx.strokeStyle = C_OAR_SHAFT; 
+                            ctx.lineWidth = 2;
+                            ctx.beginPath();
+                            ctx.moveTo(px, py);
+                            ctx.lineTo(drawTipX, drawTipY);
+                            ctx.stroke();
+
+                            // 4. SEGMENT 3: BLADE
+                            // If Far Oar is submerged, we DO NOT draw the blade (it's hidden behind hull/water)
+                            if (isFar && isSubmerged) return;
+
+                            ctx.save();
+                            ctx.translate(tipX, tipY);
+                            ctx.rotate(angle - Math.PI/2); 
+                            
+                            let bLen = 16; 
+
+                            if (isSubmerged) {
+                                // Submerged Style (Only visible for Near Oar now)
+                                ctx.beginPath();
+                                ctx.moveTo(-2, 0); ctx.lineTo(-4, bLen); ctx.lineTo(4, bLen); ctx.lineTo(2, 0); 
+                                ctx.fillStyle = 'rgba(62, 39, 35, 0.5)'; 
+                                ctx.fill();
+                                
+                                // Ripple
+                                ctx.save();
+                                ctx.rotate(-(angle - Math.PI/2)); 
+                                ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                                ctx.lineWidth = 1;
+                                ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
+                                ctx.restore();
+
+                            } else {
+                                // Air Style
+                                ctx.beginPath();
+                                ctx.moveTo(-2, 0); ctx.lineTo(-4, bLen); ctx.lineTo(4, bLen); ctx.lineTo(2, 0); ctx.closePath();
+                                ctx.fillStyle = C_OAR_BLADE; ctx.fill();
+                                ctx.fillStyle = 'rgba(0,0,0,0.1)'; ctx.fillRect(-0.5, 0, 1, bLen);
+                            }
+
+                            ctx.restore();
+                        };
+
+                        // A. DRAW FAR OAR
+                        drawSideOar(true);
+
+                        // B. DRAW BOAT HULL
+                        
+                        // [LAYER 1: BACK WALL]
+                        ctx.fillStyle = C_INT_DARK;
+                        ctx.beginPath();
+                        ctx.moveTo(-30, -5); ctx.quadraticCurveTo(0, 6, 36, -12);
+                        ctx.lineTo(36, -4); ctx.quadraticCurveTo(0, 14, -30, 0); ctx.fill();
+
+                        // [LAYER 2: PLAYER]
+                        injectHero();
+
+                        // [LAYER 3: FRONT HULL]
+                        ctx.fillStyle = C_HULL_BASE;
+                        ctx.beginPath();
+                        ctx.moveTo(-32, -4); ctx.quadraticCurveTo(0, 14, 38, -12);
+                        ctx.lineTo(32, 8); ctx.quadraticCurveTo(0, 20, -28, 8); ctx.fill();
+
+                        ctx.strokeStyle = C_HULL_DARK; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.moveTo(-31, 0); ctx.quadraticCurveTo(0, 16, 36, -8); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(-29, 5); ctx.quadraticCurveTo(0, 18, 34, 0); ctx.stroke();
+
+                        ctx.strokeStyle = C_HULL_TRIM; ctx.lineWidth = 2.5;
+                        ctx.beginPath(); ctx.moveTo(-32, -4); ctx.quadraticCurveTo(0, 14, 38, -12); ctx.stroke();
+                        
+                        ctx.fillStyle = C_BRASS; ctx.fillRect(-7, -2, 4, 3);
+
+                        // C. DRAW NEAR OAR
+                        drawSideOar(false);
+                    }
+                    // ==========================================
+                    // === VERTICAL VIEW (Corrected Angles) ===
+                    // ==========================================
+                    else { 
+                        const drawVertOar = (side) => { 
+                            ctx.save();
+                            // Pivot at Oarlock
+                            ctx.translate(side * 19, -9);
+
+                            // --- ANGLE FIX ---
+                            // 0.7 radians (approx 40 degrees) makes them point nicely "down/out"
+                            // instead of 0.3 (approx 17 degrees) which was too flat.
+                            let baseAngle = 0.7; 
+                            let angle = (side === -1) 
+                                ? (Math.PI - baseAngle + oarSwing*0.3) 
+                                : (baseAngle - oarSwing*0.3);
+                            
+                            let len = (isMoving && oarLift < -0.2) ? 20 : 26; 
+                            
+                            let tipX = Math.cos(angle) * len;
+                            let tipY = Math.sin(angle) * len; // Removed abs(), trust the angle math
+
+                            // 1. HANDLE (Dark Wood) - INCREASED LENGTH
+                            // We increase this to 15 so it looks like it goes through the hand
+                            let handleVisualLen = 15; 
+                            
+                            ctx.strokeStyle = '#3e2723'; 
+                            ctx.lineWidth = 2;
+                            ctx.beginPath(); 
+                            ctx.moveTo(0,0); 
+                            // Draw handle opposite to the shaft direction
+                            ctx.lineTo(-Math.cos(angle)*handleVisualLen, -Math.sin(angle)*handleVisualLen); 
+                            ctx.stroke();
+
+                            // 2. SHAFT
+                            ctx.strokeStyle = C_OAR_SHAFT; 
+                            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(tipX, tipY); ctx.stroke();
+                            
+                            // 3. BLADE
+                            ctx.translate(tipX, tipY);
+                            ctx.rotate(angle - Math.PI/2); 
+
+                            let depth = -9 + tipY; 
+
+                            if (depth + 14 > WATER_LEVEL) {
+                                ctx.save();
+                                ctx.beginPath(); ctx.rect(-10, WATER_LEVEL - depth, 20, 20); ctx.clip();
+                                drawBlade(ctx, true);
+                                ctx.restore();
+                            }
+                            if (depth < WATER_LEVEL) {
+                                ctx.save();
+                                ctx.beginPath(); ctx.rect(-10, -20, 20, WATER_LEVEL - depth); ctx.clip();
+                                drawBlade(ctx, false);
+                                ctx.restore();
+                            }
+                            ctx.restore();
+                        };
+
+                        drawVertOar(-1);
+                        drawVertOar(1);
+
+
+
+
+
+
+
+                       // --- BOAT BODY (Compressed) ---
+                        // --- BOAT BODY (Compressed) ---
+                        ctx.save();
+                        ctx.scale(1, 0.75);
+
+                        if (dir === 2) { // FRONT VIEW (Facing Camera)
+                            // 1. BOTTOM: Interior
+                            ctx.fillStyle = C_INT_DARK;
+                            ctx.beginPath(); ctx.ellipse(0, -6, 18, 7, 0, 0, 6.28); ctx.fill();
+                            ctx.strokeStyle = C_RIBS; ctx.lineWidth = 2;
+                            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(0, 1); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(-9, -10); ctx.lineTo(-7, 0); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(9, -10); ctx.lineTo(7, 0); ctx.stroke();
+
+                            // 2. MIDDLE: Player
+                            injectHero(); 
+
+                            // 3. TOP: Front Rim (Covers Legs)
+                            ctx.fillStyle = C_HULL_TRIM; ctx.fillRect(-12, -8, 24, 3); ctx.fillRect(-11, -3, 22, 3); 
+                            ctx.fillStyle = C_HULL_BASE; ctx.beginPath(); ctx.moveTo(-20, -6); ctx.quadraticCurveTo(0, 30, 20, -6); ctx.fill();
+                            ctx.strokeStyle = C_HULL_DARK; ctx.lineWidth = 1;
+                            ctx.beginPath(); ctx.moveTo(-17, 4); ctx.quadraticCurveTo(0, 22, 17, 4); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(-15, 12); ctx.quadraticCurveTo(0, 24, 15, 12); ctx.stroke();
+                            ctx.strokeStyle = C_HULL_TRIM; ctx.lineWidth = 3;
+                            ctx.beginPath(); ctx.moveTo(-20, -6); ctx.quadraticCurveTo(0, 6, 20, -6); ctx.stroke();
+                            ctx.fillStyle = C_HULL_TRIM; ctx.beginPath(); ctx.moveTo(-2, 22); ctx.lineTo(2, 22); ctx.lineTo(0, 26); ctx.fill();
+
+                        } else { // Back View (Combined: Sturdy + Horizontal Bar)
+                            
+                            // 1. BOTTOM LAYER: Hull & Seat
+                            // Main body
+                            ctx.fillStyle = C_HULL_BASE;
+                            ctx.beginPath(); ctx.moveTo(-19, -10); ctx.quadraticCurveTo(0, 24, 19, -10); ctx.fill();
+                            
+                            // The Seat (Darker - Player sits on this)
+                            ctx.fillStyle = C_HULL_DARK; 
+                            ctx.fillRect(-15, -12, 30, 6); 
+
+                            // 2. MIDDLE LAYER: Player
+                            injectHero();
+
+                            // 3. TOP LAYER: The Transom (Back Wall)
+                            
+                            // A. Hull Mask (Covers legs)
+                            // Curves down from the bar to the water
+                            ctx.fillStyle = C_HULL_BASE;
+                            ctx.beginPath(); 
+                            ctx.moveTo(-18, -6); 
+                            ctx.quadraticCurveTo(0, 22, 18, -6); 
+                            ctx.fill();
+
+                            // B. The Horizontal Bar (The distinct beam)
+                            let barY = -10;
+                            
+                            // Main Beam
+                            ctx.fillStyle = C_HULL_TRIM; 
+                            ctx.fillRect(-20, barY, 40, 6); 
+
+                            // Brass Nails on the ends
+                            ctx.fillStyle = C_BRASS;
+                            ctx.fillRect(-18, barY + 2, 2, 2);
+                            ctx.fillRect(16, barY + 2, 2, 2);
+
+                            // Shadow under the bar (Depth)
+                            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                            ctx.fillRect(-18, barY + 6, 36, 2);
+
+                            // C. Sturdy Outer Rim
+                            // Connects the horizontal bar to the curved hull
+                            ctx.strokeStyle = C_HULL_TRIM; 
+                            ctx.lineWidth = 3; 
+                            ctx.beginPath(); 
+                            ctx.moveTo(-20, barY + 3); 
+                            ctx.quadraticCurveTo(0, 25, 20, barY + 3); 
+                            ctx.stroke();
+                        }
+                        
+                        ctx.restore();
+
+
+
+
+
+
+                        ctx.fillStyle = C_BRASS;
+                        let lockY = (dir===2) ? -8 : -10;
+                        ctx.fillRect(-20, lockY, 3, 4);
+                        ctx.fillRect(17, lockY, 3, 4);
+                    }
+                    
+                    ctx.restore();
+                }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 // A. DRAW HORSE FIRST
                 if (S.p.isRiding) {
+
+
                     let dir = S.p.dir;
                     let faceScale = (dir === 3) ? -1 : 1;
                     let isMoving = (S.input.keys['arrowup']||S.input.keys['arrowdown']||S.input.keys['arrowleft']||S.input.keys['arrowright']);
@@ -3239,7 +5668,11 @@ function draw() {
                 }
 
                 // B. CALL PAINTER
-                drawHero(x, y);
+                // If we already drew the hero inside the boat (sandwiched), skip this.
+                // Otherwise (walking/riding), draw normally.
+                // Only draw hero if they weren't already drawn inside the boat sandwich
+                if (!heroDrawn) drawHero(x, y);
+                
 
                 // C. HORSE OVERLAY
                 if (S.p.isRiding && S.p.dir === 2) {
@@ -3419,6 +5852,75 @@ function draw() {
             }
 
 
+
+
+
+
+/// 5. EMPTY BOAT (Parked - 2x2 SIZE)
+// 5. EMPTY BOAT (Parked - Vintage Wooden Rowboat)
+            // 5. EMPTY BOAT (Parked - Matches Sailing Art)
+            else if(e.kind === 'boat') {
+                // Center of the object
+                let cx = x + (e.w * TILE) / 2; 
+                let cy = y + (e.h * TILE) / 2;
+                
+                // Floating animation
+                let tick = Date.now();
+                let bob = Math.sin(tick/450) * 2;
+                let rock = Math.cos(tick/700) * 0.03; 
+
+                ctx.save();
+                ctx.translate(cx, cy + bob);
+                ctx.rotate(rock);
+                ctx.scale(1.4, 1.4); // Match the scale of sailing mode
+
+                // --- PALETTE (Matches Sailing Mode) ---
+                const C_HULL_BASE='#5d4037', C_HULL_DARK='#3e2723', C_HULL_TRIM='#8d6e63'; 
+                const C_INT_DARK='#281a17';
+                const C_OAR_SHAFT='#d7ccc8', C_OAR_BLADE='#a1887f', C_BRASS='#ffb74d'; 
+
+                // 1. INTERIOR (Dark Shadow)
+                ctx.fillStyle = C_INT_DARK;
+                ctx.beginPath();
+                ctx.moveTo(-30, -5); ctx.quadraticCurveTo(0, 6, 36, -12);
+                ctx.lineTo(36, -4); ctx.quadraticCurveTo(0, 14, -30, 0); ctx.fill();
+
+                // 2. SEATS (Thwarts)
+                ctx.fillStyle = C_HULL_DARK;
+                ctx.fillRect(-18, -4, 8, 14); // Rear seat
+                ctx.fillRect(15, -8, 8, 14);  // Front seat
+
+                // 3. OARS (Resting Inside)
+                ctx.strokeStyle = C_OAR_SHAFT; ctx.lineWidth = 2;
+                // Left Oar tucked in
+                ctx.beginPath(); ctx.moveTo(-25, 2); ctx.lineTo(15, 6); ctx.stroke();
+                // Right Oar tucked in
+                ctx.beginPath(); ctx.moveTo(-25, 6); ctx.lineTo(15, 10); ctx.stroke();
+                
+                // Oar Blades
+                ctx.fillStyle = C_OAR_BLADE;
+                ctx.beginPath(); ctx.ellipse(20, 6, 6, 2, 0.2, 0, 6.28); ctx.fill();
+                ctx.beginPath(); ctx.ellipse(20, 10, 6, 2, 0.2, 0, 6.28); ctx.fill();
+
+                // 4. HULL (Exterior)
+                ctx.fillStyle = C_HULL_BASE;
+                ctx.beginPath();
+                ctx.moveTo(-32, -4); ctx.quadraticCurveTo(0, 14, 38, -12);
+                ctx.lineTo(32, 8); ctx.quadraticCurveTo(0, 20, -28, 8); ctx.fill();
+
+                // 5. DETAILS (Rim & Lines)
+                ctx.strokeStyle = C_HULL_DARK; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(-31, 0); ctx.quadraticCurveTo(0, 16, 36, -8); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-29, 5); ctx.quadraticCurveTo(0, 18, 34, 0); ctx.stroke();
+
+                ctx.strokeStyle = C_HULL_TRIM; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(-32, -4); ctx.quadraticCurveTo(0, 14, 38, -12); ctx.stroke();
+                
+                // Brass Oarlocks
+                ctx.fillStyle = C_BRASS; ctx.fillRect(-7, -2, 4, 3);
+
+                ctx.restore();
+            }
 
 
 
@@ -4177,6 +6679,380 @@ function draw() {
                 let cx = x + (e.w*TILE)/2;
                 let cy = y + (e.h*TILE)/2;
                 
+
+
+
+
+
+
+
+// --- NEW HIGH-QUALITY CAMPFIRE ART ---
+                // --- PRO ART: CAMPFIRE (2x2 LARGE) ---
+              // --- PRO ART V2: ROUGH & NATURAL CAMPFIRE ---
+               if (e.kind === 'campfire') {
+                    let cx = x + TILE; 
+                    let cy = y + TILE + 10;
+
+                    // --- 1. ASH PIT (Shadow) ---
+                    // Fade out EARLY (fuel < 30) so the ground is clean before the fire gets small.
+                    if (e.lit && e.fuel > 30) {
+                        let fuelRatio = Math.max(0, Math.min(1.0, (e.fuel - 30) / 40.0));
+                        if (fuelRatio > 0.01) {
+                            let ashGrad = ctx.createRadialGradient(cx, cy+5, 8, cx, cy+5, 38);
+                            ashGrad.addColorStop(0, `rgba(50, 40, 40, ${0.4 * fuelRatio})`);   
+                            ashGrad.addColorStop(1, 'rgba(50, 40, 40, 0)');     
+                            ctx.fillStyle = ashGrad;
+                            ctx.fillRect(cx - 40, cy - 35, 80, 80); 
+                        }
+                    }
+
+                    // --- 2. ROUGH LOGS ---
+                    const drawRoughLog = (angle, len, width) => {
+                        ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle);
+                        
+                        // Bark
+                        ctx.fillStyle = '#4e342e'; 
+                        ctx.beginPath();
+                        ctx.moveTo(-width/2, -len); ctx.lineTo(width/2, -len); 
+                        ctx.lineTo(width/2 + 2, -len/2); ctx.lineTo(width/2, 0); ctx.lineTo(width/2 + 1, len/2);
+                        ctx.lineTo(width/2, len); ctx.lineTo(-width/2, len);
+                        ctx.lineTo(-width/2 - 2, len/2); ctx.lineTo(-width/2, 0); ctx.lineTo(-width/2 - 1, -len/2);
+                        ctx.fill();
+
+                        // Detail
+                        ctx.fillStyle = '#3e2723'; ctx.fillRect(-2, -len+5, 3, len-10); 
+                        
+                        // Ends
+                        ctx.fillStyle = '#8d6e63'; ctx.beginPath(); ctx.ellipse(0, -len, width/2, width/4, 0, 0, 6.28); ctx.fill();
+                        ctx.fillStyle = '#5d4037'; ctx.beginPath(); ctx.arc(0, -len, 2, 0, 6.28); ctx.fill();
+                        ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.ellipse(0, len, width/2, width/4, 0, 0, 6.28); ctx.fill();
+
+                        ctx.restore();
+                    };
+                    drawRoughLog(0.6, 28, 12); drawRoughLog(2.5, 28, 13); drawRoughLog(4.8, 28, 12);
+
+                    // --- 3. STONES ---
+                    for(let i=0; i<9; i++) {
+                        let a = (i / 9) * 6.28;
+                        let sx = cx + Math.cos(a) * 42;
+                        let sy = cy + Math.sin(a) * 23;
+                        
+                        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.arc(sx, sy+4, 9, 0, 6.28); ctx.fill();
+                        
+                        ctx.fillStyle = '#37474f'; 
+                        ctx.beginPath(); ctx.moveTo(sx-8, sy); ctx.lineTo(sx-5, sy-6); ctx.lineTo(sx+6, sy-5);
+                        ctx.lineTo(sx+9, sy+2); ctx.lineTo(sx+2, sy+7); ctx.lineTo(sx-6, sy+5); ctx.fill();
+
+                        ctx.fillStyle = '#78909c'; 
+                        ctx.beginPath(); ctx.moveTo(sx-5, sy-6); ctx.lineTo(sx+6, sy-5); ctx.lineTo(sx+9, sy+2); ctx.lineTo(sx-2, sy+1); ctx.fill();
+                    }
+
+                    // --- 4. FIRE (With Shrink Logic) ---
+                    if (e.lit) {
+                        // [FIX] Scale fire size based on fuel. Starts shrinking at 40 fuel.
+                        // This prevents the "POP" effect where the fire vanishes instantly.
+                        let fireScale = Math.min(1.0, e.fuel / 40.0);
+                        if (fireScale < 0.1) fireScale = 0.1; // Keep tiny ember until dead
+
+                        let t = Date.now() / 120; 
+                        let flicker = Math.sin(t*3) * 5;
+                        let sway = Math.cos(t) * 5;
+
+                        // Inner Glow (Scales with fire)
+                        let glowR = (50 + Math.sin(t)*5) * fireScale;
+                        let g = ctx.createRadialGradient(cx, cy, 10 * fireScale, cx, cy, glowR);
+                        g.addColorStop(0, 'rgba(255, 87, 34, 0.7)');
+                        g.addColorStop(1, 'rgba(255, 87, 34, 0)');
+                        ctx.fillStyle = g;
+                        ctx.beginPath(); ctx.ellipse(cx, cy-10, glowR, glowR*0.6, 0, 0, 6.28); ctx.fill();
+
+                        const drawFlame = (ox, oy, w, h, col) => {
+                             ctx.fillStyle = col;
+                             ctx.beginPath();
+                             // Apply Scale to Width (w) and Height (h)
+                             ctx.moveTo(cx + (ox*fireScale) - (w*fireScale), cy + oy);
+                             ctx.quadraticCurveTo(cx + (ox*fireScale) + sway, cy + oy - (h*fireScale), cx + (ox*fireScale) + (w*fireScale), cy + oy);
+                             ctx.fill();
+                        };
+
+                        // Draw Flames (Scaled)
+                        drawFlame(0, 0, 18, 55 + flicker, '#e64a19'); 
+                        drawFlame(-5, 2, 12, 40 + flicker, '#ff9800'); 
+                        drawFlame(5, 2, 12, 38 - flicker, '#ff9800');  
+                        drawFlame(0, 5, 8, 25 + flicker, '#fff176');   
+                        
+                        // Embers
+                        if(Math.random() < 0.2 * fireScale) {
+                            ctx.fillStyle = '#ffeb3b';
+                            ctx.fillRect(cx + (Math.random()-0.5)*30, cy - 20 - Math.random()*30, 3, 3);
+                        }
+                    } else {
+                        // Cold Ash
+                        ctx.fillStyle = '#9e9e9e'; ctx.fillRect(cx-5, cy-5, 2, 2); ctx.fillRect(cx+4, cy-2, 2, 2);
+                    }
+                    return;
+                }
+
+
+
+
+
+
+
+
+
+
+
+// [REPLACE / INSERT HERE]
+                // --- NEW: SEA ROCK (Jagged & Mossy) ---
+                // [TOP CONTEXT]
+                // --- NEW: SEA ROCK (High-Fidelity Reef Cluster) ---
+                // --- NEW: SEA ROCK (Universal Aspect Ratio Lock) ---
+           // --- NEW: SEA ROCK (Matte Reef Style) ---
+           // --- NEW: SEA ROCK (Round w/ 2 Colors + Sprawled w/ 2 Colors & Sizes) ---
+            if (e.kind === 'sea_rock') {
+                let w = e.w * TILE;
+                let h = e.h * TILE;
+                let cx = x + w/2;
+                let cy = y + h;
+
+                // 1. GENERATE SEED
+                let seed = Math.abs(Math.sin(e.x * 12.9898 + e.y * 78.233));
+                let varSeed = Math.floor(seed * 100); 
+                
+                // VARIANT LOGIC:
+                let variant = (e.w >= 3) ? 2 : (varSeed % 2); 
+
+
+
+
+
+// --- INSERTION 1: MOSS LOGIC ---
+                // 0: None, 1: Pixels, 2: Gradient
+                let mossType = Math.floor(seed * 1000) % 3; 
+
+                const drawMoss = (sx, sy, mw, mh) => {
+                    if (mossType === 0) return; 
+
+                    ctx.save();
+                    ctx.clip(); // Clip to the rock shape currently in the path
+
+                    if (mossType === 1) { // PIXELS
+                        let count = 8 + (mw / 4);
+                        for(let k=0; k<count; k++) {
+                            let r = Math.sin(k * 45.1 + e.x) * 123.45;
+                            let px = sx + Math.abs((r * 10) % mw); 
+                            let py = sy + Math.abs((r * 20) % mh);
+                            ctx.fillStyle = (k%2===0) ? '#33691e' : '#558b2f'; 
+                            ctx.fillRect(px, py, 2, 2);
+                        }
+                    }
+                    else if (mossType === 2) { // GRADIENT
+                        let g = ctx.createLinearGradient(sx, sy, sx + mw/1.5, sy + mh/1.5);
+                        g.addColorStop(0, 'rgba(85, 139, 47, 0.6)'); 
+                        g.addColorStop(0.6, 'rgba(85, 139, 47, 0)'); 
+                        ctx.fillStyle = g; ctx.fillRect(sx, sy, mw, mh);
+                    }
+                    ctx.restore();
+                };
+
+
+
+
+
+
+
+
+
+                // 2. HEIGHT SAFETY
+                let rockFeetWorldY = (e.y + e.h) * TILE;
+                let ceilingWorldY = 120 * TILE; 
+                let maxHeadroom = Math.max(0, rockFeetWorldY - ceilingWorldY - 5); 
+
+                // 3. FOAM BASE
+                let time = Date.now() / 800;
+                let foamSize = Math.sin(time + e.x) * 1.5;
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+                ctx.beginPath();
+                ctx.ellipse(cx, cy - 3, w/2 * 0.8 + foamSize, 5, 0, 0, 6.28);
+                ctx.fill();
+
+                // HELPER: Shadow
+                const drawShadow = (ox, width) => {
+                    ctx.fillStyle = 'rgba(0, 0, 20, 0.3)';
+                    ctx.beginPath();
+                    ctx.ellipse(cx + ox, cy - 2, width/2, 4, 0, 0, 6.28);
+                    ctx.fill();
+                };
+
+                // --- STYLE A: SHARP SLATE (Cool Colors) ---
+                const drawSlate = (ox, oy, sw, sh, scaleH) => {
+                    let maxAspectRatioH = sw * 2.2; 
+                    let desiredH = Math.min(sh * scaleH, maxAspectRatioH);
+                    let safeH = Math.min(desiredH, (maxHeadroom - oy) / 1.15);
+                    let sx = cx + ox - (sw/2);
+                    let sy = cy - oy - safeH;
+
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy + safeH); 
+                    ctx.lineTo(sx - (sw*0.05), sy + safeH*0.3);
+                    ctx.lineTo(sx + sw*0.2, sy); 
+                    ctx.lineTo(sx + sw*0.5, sy + safeH*0.05); 
+                    ctx.lineTo(sx + sw*0.8, sy - (safeH*0.1)); 
+                    ctx.lineTo(sx + sw + (sw*0.05), sy + safeH*0.4); 
+                    ctx.lineTo(sx + sw, sy + safeH); 
+                    ctx.closePath();
+
+                    let grad = ctx.createLinearGradient(sx, sy, sx, sy + safeH);
+                    grad.addColorStop(0, '#78909c'); 
+                    grad.addColorStop(1, '#263238'); 
+                    ctx.fillStyle = grad; ctx.fill();
+
+
+drawMoss(sx, sy, sw, safeH); // Apply Moss
+
+
+
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                    ctx.beginPath(); ctx.moveTo(sx + sw*0.2, sy); ctx.lineTo(sx + sw*0.5, sy + safeH*0.05); ctx.lineTo(sx + sw*0.5, sy + safeH); ctx.lineTo(sx + sw*0.1, sy + safeH*0.8); ctx.fill();
+                    ctx.strokeStyle = '#102027'; ctx.lineWidth = 1; ctx.stroke();
+                };
+
+                // --- STYLE B: ROUND BOULDER (2 Colors: Grey / Brown) ---
+                const drawRound = (ox, oy, sw, sh, scaleH, useBrown) => {
+                    let maxAspectRatioH = sw * 0.85; 
+                    let desiredH = Math.min(sh * scaleH, maxAspectRatioH);
+                    let safeH = Math.min(desiredH, (maxHeadroom - oy) / 1.05);
+                    let sx = cx + ox - (sw/2);
+                    let sy = cy - oy - safeH;
+
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy + safeH);
+                    ctx.bezierCurveTo(sx - 2, sy + safeH*0.5, sx + sw*0.2, sy, sx + sw*0.5, sy);
+                    ctx.bezierCurveTo(sx + sw*0.9, sy, sx + sw + 2, sy + safeH*0.6, sx + sw, sy + safeH);
+                    ctx.closePath();
+
+                    let lightX = sx + sw * 0.4, lightY = sy + safeH * 0.2; 
+                    let grad = ctx.createRadialGradient(lightX, lightY, sw * 0.2, lightX, lightY, sw * 1.2);
+                    
+                    if (useBrown) { 
+                        grad.addColorStop(0, '#a1887f'); grad.addColorStop(1, '#4e342e'); 
+                    } else { 
+                        grad.addColorStop(0, '#bdbdbd'); grad.addColorStop(1, '#424242'); 
+                    }
+                    
+                    ctx.fillStyle = grad; ctx.fill();
+
+
+
+drawMoss(sx, sy, sw, safeH); // Apply Moss
+
+
+                    ctx.fillStyle = 'rgba(0,0,0,0.15)'; 
+                    ctx.beginPath(); ctx.arc(sx + sw * 0.7, sy + safeH * 0.4, 1.5, 0, 6.28); ctx.fill();
+                    ctx.beginPath(); ctx.arc(sx + sw * 0.3, sy + safeH * 0.7, 1, 0, 6.28); ctx.fill();
+                    ctx.strokeStyle = '#263238'; ctx.lineWidth = 1; ctx.stroke();
+                };
+
+                // --- STYLE C: GIGANTIC SPRAWLED REEF (2 Sizes, 2 Colors) ---
+                const drawSprawled = (ox, oy, sw, sh, isMega, isDark) => {
+                    // SIZE LOGIC: Mega is 20% wider and uses max height
+                    let drawW = isMega ? sw * 1.2 : sw; 
+                    let drawH = sh * 0.95; 
+                    
+                    let safeH = Math.min(drawH, (maxHeadroom - oy) / 1.05);
+                    
+                    let sx = cx + ox - (drawW/2);
+                    let sy = cy - oy - safeH;
+
+                    // Silhouette
+                    ctx.beginPath();
+                    ctx.moveTo(sx, sy + safeH);
+                    // Tier 1
+                    ctx.lineTo(sx - drawW*0.05, sy + safeH*0.6);
+                    ctx.lineTo(sx + drawW*0.15, sy + safeH*0.5);
+                    // Tier 2
+                    ctx.lineTo(sx + drawW*0.25, sy + safeH*0.2);
+                    // Peak
+                    ctx.lineTo(sx + drawW*0.4, sy - safeH*0.05);
+                    ctx.lineTo(sx + drawW*0.6, sy + safeH*0.1);
+                    // Tier 2 Right
+                    ctx.lineTo(sx + drawW*0.8, sy + safeH*0.3);
+                    ctx.lineTo(sx + drawW + drawW*0.05, sy + safeH*0.6);
+                    ctx.lineTo(sx + drawW, sy + safeH);
+                    ctx.closePath();
+
+                    // COLOR LOGIC: Slate Blue vs Dark Obsidian
+                    ctx.fillStyle = isDark ? '#263238' : '#546e7a'; 
+                    ctx.fill();
+
+
+drawMoss(sx, sy, drawW, safeH); // Apply Moss
+
+
+
+
+                    ctx.strokeStyle = '#102027'; ctx.lineWidth = 1; ctx.stroke();
+
+                    // Shading (Matte)
+                    ctx.save();
+                    ctx.clip(); 
+                    
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.beginPath(); 
+                    ctx.moveTo(sx + drawW*0.25, sy + safeH*0.2); 
+                    ctx.lineTo(sx + drawW*0.25, sy + safeH);     
+                    ctx.lineTo(sx + drawW, sy + safeH);          
+                    ctx.lineTo(sx + drawW, sy + safeH*0.6);      
+                    ctx.fill();
+
+                    // Cracks
+                    ctx.strokeStyle = 'rgba(0,0,0,0.3)'; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(sx + drawW*0.5, sy + safeH*0.5); ctx.lineTo(sx + drawW*0.55, sy + safeH*0.8); ctx.stroke();
+
+                    // Barnacles
+                    const drawBarnacle = (bx, by) => {
+                        ctx.fillStyle = '#cfd8dc'; ctx.beginPath(); ctx.arc(bx, by, 1.5, 0, 6.28); ctx.fill();
+                        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(bx, by, 0.5, 0, 6.28); ctx.fill();
+                    };
+                    drawBarnacle(sx + drawW*0.2, sy + safeH*0.55);
+                    drawBarnacle(sx + drawW*0.25, sy + safeH*0.6);
+                    if (isMega) drawBarnacle(sx + drawW*0.7, sy + safeH*0.4); // Extra detail for Mega
+
+                    ctx.restore();
+                };
+
+                // --- 4. DRAW VARIANTS ---
+                if (variant === 2) { 
+                    // === GIGANTIC SPRAWL ===
+                    drawShadow(0, w * 1.1); // Big shadow
+                    
+                    // Logic: Use varSeed to determine Sub-Variant
+                    // Bit 1 (Value 1 or 0): Size (Mega vs Grand)
+                    // Bit 2 (Value 2 or 0): Color (Dark vs Slate)
+                    let isMega = (varSeed % 2 === 0);
+                    let isDark = ((varSeed >> 1) % 2 === 0);
+
+                    drawSprawled(0, 0, w * 0.9, h, isMega, isDark); 
+                } 
+                else if (variant === 1) { 
+                    // === ROUND BOULDER ===
+                    drawShadow(0, w*0.85);
+                    // 50% Brown, 50% Grey
+                    drawRound(0, 0, w*0.85, h, 1.0, (varSeed % 4 < 2)); 
+                } 
+                else { 
+                    // === SHARP SLATE ===
+                    drawShadow(0, w*0.8);
+                    drawSlate(0, 0, w*0.8, h, 1.8); 
+                }
+
+                return;
+            }
+
+
+
+
                 // A. BOULDER (Unchanged)
                 if (e.kind === 'boulder') {
                     let r = TILE - 12;
@@ -4196,6 +7072,10 @@ function draw() {
 
                     ctx.strokeStyle = '#546e7a'; ctx.lineWidth = 2; ctx.stroke();
                 }
+
+
+
+
                 
                 // B. STUMP (Fixed: Irregular "Gripping" Roots)
                 if (e.kind === 'stump') {
@@ -4308,6 +7188,219 @@ function draw() {
                     ctx.fillStyle = shadowColor; puffs.forEach(p => { ctx.beginPath(); ctx.arc(cx + p.x*s, (cy + 2) + p.y*s, (p.r*s) + 2.5, 0, 6.28); ctx.fill(); });
                     ctx.fillStyle = color; puffs.forEach(p => { ctx.beginPath(); ctx.arc(cx + p.x*s, cy + p.y*s, p.r*s, 0, 6.28); ctx.fill(); });
                 };
+
+
+
+
+// --- NEW: COCONUT TREE ---
+// --- COCONUT TREE (Chunky Style) ---
+                // --- COCONUT TREE (High-Fidelity Palm) ---
+                // --- NEW: COCONUT TREE (Fixed Colors & Variable Coconuts 1-3) ---
+                if (e.kind === 'tree_coconut') {
+                    // 1. DETERMINE VARIANT (0 to 9)
+                    let variant = (Math.floor(e.x * 7) + Math.floor(e.y * 13)) % 10;
+
+                    // 2. DEFINE THE 10 ARCHETYPES
+                    let cfg = {};
+
+                    switch(variant) {
+                        case 0: // THE CLASSIC (Balanced, 3 Coconuts)
+                            cfg = { h:-0.2, lean:0, thick:16, len:75, wid:35, nCoco: 3,
+                                    c:{b:'#1b5e20', d:'#2e7d32', l:'#43a047'} }; break;
+                        case 1: // THE GOLDEN LEANER (Right Lean, 2 Coconuts)
+                            cfg = { h:0, lean:25, thick:15, len:80, wid:30, nCoco: 2,
+                                    c:{b:'#33691e', d:'#827717', l:'#c0ca33'} }; break;
+                        case 2: // THE DWARF (Short, Fat, Teal, 3 Coconuts)
+                            cfg = { h:0.6, lean:-5, thick:24, len:60, wid:45, nCoco: 3,
+                                    c:{b:'#004d40', d:'#00695c', l:'#26a69a'} }; break;
+                        case 3: // THE SKYSCRAPER (Tall, Skinny, 1 Coconut)
+                            cfg = { h:-0.6, lean:5, thick:12, len:70, wid:28, nCoco: 1,
+                                    c:{b:'#33691e', d:'#558b2f', l:'#9ccc65'} }; break;
+                        case 4: // THE WINDBLOWN (Hard Left, 1 Coconut)
+                            cfg = { h:-0.1, lean:-30, thick:16, len:85, wid:32, nCoco: 1,
+                                    c:{b:'#1b5e20', d:'#388e3c', l:'#66bb6a'} }; break;
+                        case 5: // THE ANCIENT (Thick, Dark, 3 Coconuts)
+                            cfg = { h:-0.3, lean:10, thick:26, len:90, wid:40, nCoco: 3,
+                                    c:{b:'#000000', d:'#1b5e20', l:'#2e7d32'} }; break;
+                        case 6: // THE BABY (Small, Fresh Green - FIXED COLOR, 1 Coconut)
+                            cfg = { h:0.8, lean:0, thick:12, len:50, wid:25, nCoco: 1,
+                                    c:{b:'#33691e', d:'#689f38', l:'#8bc34a'} }; break; // Removed Neon
+                        case 7: // THE STARFISH (Spiky, 2 Coconuts)
+                            cfg = { h:0.5, lean:0, thick:18, len:95, wid:20, nCoco: 2,
+                                    c:{b:'#1b5e20', d:'#2e7d32', l:'#81c784'} }; break;
+                        case 8: // THE YELLOW PALM (Autumn, 2 Coconuts)
+                            cfg = { h:0, lean:15, thick:15, len:75, wid:35, nCoco: 2,
+                                    c:{b:'#827717', d:'#afb42b', l:'#dce775'} }; break;
+                        case 9: // THE MUTANT (Curved, Blue-Green, 3 Coconuts)
+                            cfg = { h:-0.2, lean:-15, thick:20, len:80, wid:50, nCoco: 3,
+                                    c:{b:'#006064', d:'#00838f', l:'#00acc1'} }; break;
+                    }
+
+                    // 3. ANIMATION
+                    let time = Date.now();
+                    let swaySpd = (cfg.h > 0) ? 1500 : 2500;
+                    let swayMag = (cfg.h > 0) ? 5 : 12;
+                    let sway = Math.sin(time / swaySpd) * swayMag; 
+                    let leafBob = Math.sin(time / 800) * 3;
+
+                    // 4. COORDINATES
+                    let rootX = x + 1.5 * TILE;
+                    let rootY = y + 2.8 * TILE;
+                    
+                    let topX = rootX + sway + cfg.lean; 
+                    let topY = (y - 0.2 * TILE) + (cfg.h * TILE); 
+
+                    // Curve trunk if leaning heavily
+                    let curveOffset = (Math.abs(cfg.lean) > 20) ? -cfg.lean * 0.3 : 0;
+                    let midX = (rootX + topX) / 2 + (sway * 0.2) + (cfg.lean * 0.3) + curveOffset;
+                    let midY = (rootY + topY) / 2;
+
+                    // 5. DRAW TRUNK
+                    let numSegs = 8; 
+                    const getTrunkPt = (t) => {
+                        let inv = 1 - t;
+                        return {
+                            x: (inv*inv * rootX) + (2*inv*t * midX) + (t*t * topX),
+                            y: (inv*inv * rootY) + (2*inv*t * midY) + (t*t * topY)
+                        };
+                    };
+
+                    for (let i = 0; i < numSegs; i++) {
+                        let t = i / numSegs;
+                        let nextT = (i + 1) / numSegs;
+                        let p1 = getTrunkPt(t);
+                        let p2 = getTrunkPt(nextT);
+                        let w1 = cfg.thick * (1 - t * 0.5);
+                        let w2 = cfg.thick * (1 - nextT * 0.5);
+                        let dx = p2.x - p1.x;
+                        let dy = p2.y - p1.y;
+                        let angle = Math.atan2(dy, dx) + Math.PI/2;
+                        let len = Math.hypot(dx, dy) + 1;
+
+                        ctx.save();
+                        ctx.translate(p1.x, p1.y);
+                        ctx.rotate(angle);
+                        ctx.fillStyle = '#795548'; 
+                        ctx.beginPath();
+                        ctx.moveTo(-w1, 0); ctx.lineTo(w1, 0);
+                        ctx.lineTo(w2, -len); ctx.lineTo(-w2, -len);
+                        ctx.fill();
+                        ctx.fillStyle = 'rgba(0,0,0,0.15)'; 
+                        ctx.fillRect(0, -len, w2, len);
+                        ctx.fillStyle = '#3e2723'; 
+                        ctx.fillRect(-w1 + 1, -2, (w1*2)-2, 2);
+                        ctx.restore();
+                    }
+
+                    // 6. DRAW LEAVES (Fronds)
+                    const draw10VariantFrond = (angle, lenMod, widMod, color) => {
+                        let len = cfg.len * lenMod;
+                        let width = cfg.wid * widMod;
+
+                        let tipX = topX + Math.cos(angle) * len + (sway * 0.5);
+                        let tipY = topY + Math.sin(angle) * len + leafBob;
+                        
+                        if (angle > 0 && angle < 3.14) tipY += 20; 
+
+                        let cpDist = len * 0.6;
+                        let cpX = topX + Math.cos(angle - 0.2) * cpDist; 
+                        let cpY = topY + Math.sin(angle - 0.2) * cpDist - 25; 
+
+                        const getQ = (t, p0x, p0y, p1x, p1y, p2x, p2y) => {
+                            let inv = 1 - t;
+                            return {
+                                x: (inv*inv * p0x) + (2*inv*t * p1x) + (t*t * p2x),
+                                y: (inv*inv * p0y) + (2*inv*t * p1y) + (t*t * p2y)
+                            };
+                        }
+
+                        ctx.fillStyle = color;
+                        ctx.beginPath();
+                        ctx.moveTo(topX, topY);
+                        ctx.quadraticCurveTo(cpX, cpY, tipX, tipY); // Smooth Top
+
+                        // Jagged Bottom
+                        let bCpX = cpX; let bCpY = cpY + width; 
+                        let segments = 5; 
+                        for(let i=1; i<=segments; i++) {
+                            let t = i / segments; 
+                            let pt = getQ(t, tipX, tipY, bCpX, bCpY, topX, topY + 8);
+                            if (i % 2 !== 0 && i < segments) {
+                                let midX = (pt.x + topX) / 2;
+                                let midY = (pt.y + topY) / 2;
+                                let notchX = pt.x + (midX - pt.x) * 0.25; 
+                                let notchY = pt.y + (midY - pt.y) * 0.25;
+                                ctx.lineTo(notchX, notchY);
+                            } else {
+                                ctx.lineTo(pt.x, pt.y);
+                            }
+                        }
+                        ctx.closePath(); ctx.fill();
+
+                        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+                        ctx.lineWidth = 1; ctx.stroke();
+                    };
+
+                    // LAYER 1: BACK LEAVES
+                    let backAngles = [0.4, 2.7, 3.8, 5.6];
+                    backAngles.forEach(a => draw10VariantFrond(a, 0.9, 0.9, cfg.c.b));
+
+                    // LAYER 2: COCONUTS (1-3 Logic)
+                    // Determine positions based on count
+                    let cocoPos = [];
+                    if (cfg.nCoco === 1) {
+                         cocoPos = [{x:0, y:12, s:8}]; // 1: Center
+                    } else if (cfg.nCoco === 2) {
+                         cocoPos = [{x:-5, y:9, s:7.5}, {x:5, y:9, s:7.5}]; // 2: Sides
+                    } else {
+                         cocoPos = [{x:-6, y:8, s:7}, {x:6, y:8, s:7}, {x:0, y:14, s:8}]; // 3: Full cluster
+                    }
+
+                    cocoPos.forEach(c => {
+                        let cx = topX + c.x + (sway*0.1); 
+                        let cy = topY + c.y;
+                        
+                        // Shadow
+                        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.arc(cx+2, cy+2, c.s, 0, 6.28); ctx.fill();
+                        // Main Body
+                        ctx.fillStyle = '#c0ca33'; ctx.beginPath(); ctx.arc(cx, cy, c.s, 0, 6.28); ctx.fill();
+                        // Shading
+                        ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.arc(cx, cy, c.s, 2.5, 5.5); ctx.fill();
+                    });
+
+                    // LAYER 3: FRONT LEAVES
+                    let frontAngles = [0, 1.2, 2.0, 3.14, 4.2, 5.2];
+                    frontAngles.forEach(a => {
+                        let col = (a > 3.5 && a < 5.8) ? cfg.c.l : cfg.c.d; 
+                        draw10VariantFrond(a, 1.0, 1.0, col);
+                    });
+
+                    // 7. CENTER CAP
+                    ctx.fillStyle = cfg.c.d;
+                    ctx.beginPath(); ctx.arc(topX, topY + 2, 7, 0, 6.28); ctx.fill();
+
+                    // 8. BASE GRASS TUFTS
+                    ctx.fillStyle = '#2e7d32';
+                    ctx.beginPath();
+                    ctx.moveTo(rootX - 12, rootY);
+                    ctx.lineTo(rootX - 16, rootY - 12); ctx.lineTo(rootX - 10, rootY - 4);
+                    ctx.lineTo(rootX - 6, rootY - 18); ctx.lineTo(rootX - 2, rootY - 4);
+                    ctx.lineTo(rootX + 2, rootY - 16); ctx.lineTo(rootX + 6, rootY - 4);
+                    ctx.lineTo(rootX + 14, rootY - 10); ctx.lineTo(rootX + 10, rootY);
+                    ctx.fill();
+
+                    return; 
+                }
+
+
+
+
+
+
+
+
+
+
 
                 // --- 1. FRUIT TREES (Apple & Orange) ---
                 if (e.kind === 'tree_apple' || e.kind === 'tree_orange') {
@@ -4756,48 +7849,373 @@ function draw() {
         // --- LAYER 3: PARTICLES & TIME ---
         S.parts.forEach(p => {
             p.x+=p.vx; p.y+=p.vy; p.life--;
-            let px = p.x*TILE-S.cam.x+sx, py = p.y*TILE-S.cam.y;
-            ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(px, py, p.s, 0, 6.28); ctx.fill();
+
+
+
+
+
+
+// --- DOLPHIN RENDERER ---
+// --- DOLPHIN RENDERER (Region-Specific Ghost Fix) ---
+// --- DOLPHIN RENDERER (Clipping Mask Fix) ---
+if (p.type === 'dolphin') {
+   p.vy += p.grav; 
+
+   // 1. EXTENDED DEATH CHECK (Allow full submerge)
+   // We let it fall a full tile (+1.0) deep.
+   // Because of the clipping mask below, it won't be visible "over" the water.
+   // It will invisible slide into the water, and we delete it once fully hidden.
+   if (p.y > p.startY + 1.0) {
+       p.dead = true; 
+       
+       // Splash Effect
+       S.audio.play('water'); 
+       for(let k=0; k<20; k++) S.parts.push({
+            x: p.x + (Math.random()-0.5)*0.5, 
+            y: p.y - 0.5, // Spawn splash at surface, not deep down
+            vx: (Math.random()-0.5)*0.15, 
+            vy: -(Math.random()*0.15),
+            c: Math.random() < 0.5 ? '#b3e5fc' : '#ffffff',
+            life: 30 + Math.random() * 20, 
+            s: 4
+       });
+       return; 
+   }
+
+   // 2. NIGHT/REGION FIX
+   let t = S.farm.time;
+   let isNight = (t >= 900 || t < 360);
+   if (isNight) {
+       let inRiver = (p.x >= 115 && p.x <= 175 && p.y >= 110 && p.y <= 130);
+       let inCove  = (p.x >= 195 && p.x <= 300);
+       if (inRiver || inCove) return;
+   }
+
+   // 3. DRAW WITH CLIPPING MASK
+   let dx = p.x * TILE - S.cam.x + sx;
+   let dy = p.y * TILE - S.cam.y;
+   let rot = Math.atan2(p.vy, Math.abs(p.vx) * 0.5);
+
+   ctx.save();
+
+   // --- THE FIX IS HERE ---
+   // Calculate the screen Y coordinate of the water surface
+   let waterScreenY = p.startY * TILE - S.cam.y;
+   
+   // Define a clipping path that covers only the AIR (Top of screen down to water line)
+   // Any part of the dolphin that falls below 'waterScreenY' will be hidden
+   ctx.beginPath();
+   ctx.rect(0, 0, cvs.width, waterScreenY);
+   ctx.clip(); 
+   // -----------------------
+
+   ctx.translate(dx, dy);
+   ctx.scale(p.dir * 3.0, 3.0); 
+   ctx.rotate(rot);
+
+   // -- Standard Body Art --
+   ctx.fillStyle = '#78909c';
+   ctx.beginPath();
+   ctx.moveTo(-20, 0); ctx.quadraticCurveTo(-5, -14, 8, -10); 
+   ctx.quadraticCurveTo(14, -9, 14, -2); ctx.lineTo(22, 0); 
+   ctx.lineTo(15, 3); ctx.quadraticCurveTo(0, 10, -20, 0);
+   ctx.fill();
+
+   ctx.fillStyle = '#eceff1'; // Belly
+   ctx.beginPath();
+   ctx.moveTo(15, 3); ctx.quadraticCurveTo(5, 7, -12, 1); 
+   ctx.lineTo(15, 3);
+   ctx.fill();
+
+   ctx.fillStyle = '#546e7a'; // Fins
+   ctx.beginPath(); ctx.moveTo(-2, -11); ctx.quadraticCurveTo(1, -20, 6, -10); ctx.fill();
+   ctx.beginPath(); ctx.ellipse(7, 3, 5, 2, 0.6, 0, 6.28); ctx.fill();
+
+   ctx.beginPath(); // Tail
+   ctx.moveTo(-18, 0); ctx.lineTo(-26, -6); ctx.lineTo(-22, 0);  
+   ctx.lineTo(-26, 6); ctx.lineTo(-18, 0);
+   ctx.fill();
+
+   ctx.fillStyle = '#37474f'; // Face
+   ctx.fillRect(16, 2, 4, 1); 
+   ctx.beginPath(); ctx.arc(13, -2, 1, 0, 6.28); ctx.fill(); 
+
+   ctx.restore(); // Removes the clip for the next particle
+   return;
+}       // ------------------------
+
+
+
+
+
+
+// --- SPRINKLE GLITCH FIX ---
+            // === FIX: COVE MASK FOR PARTICLES ===
+            // ===============================================
+            // Check if this is a water/splash particle
+            let isWater = (p.c === '#b3e5fc' || p.c === '#00b0ff' || p.c === '#ffffff');
+
+            if (isWater) {
+                // 1. Define Cove Range
+                if (p.x >= 222 && p.x <= 273) {
+                    // 2. Solve the Curve Math (Matches Map Logic)
+                    let relX = p.x - 222;
+                    const p1x=12, p2x=39, p3x=51;
+                    let t = relX / 51.0; 
+                    for(let i=0; i<4; i++) { 
+                        let inv = 1-t;
+                        let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                        let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                        if (Math.abs(slope) > 0.001) t -= (bx - relX) / slope;
+                    }
+                    let inv = 1-t;
+                    let curveY = 120 - ((3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0));
+                    
+                    // 3. THE CHECK:
+                    // If particle is HIGHER (smaller Y) than the curve, hide it!
+                    // We add a tiny buffer (+0.2) so it doesn't clip too harshly
+                    if (p.y < curveY + 0.2) return; 
+                }
+            }
+            // ===============================================
+
+
+            // --- SPRINKLE GLITCH FIX (Existing Night Logic) ---
+            // 1. Identify Water Particles
+            // let isWater ... (Already defined above)
+            
+            // 2. Check Time & Location
+            let tPart = S.farm.time;
+            let isNightPart = (tPart >= 900 || tPart < 360);
+            
+            // 3. Define the Zones (River + Cove)
+            let inZone = (p.x >= 115 && p.x <= 175 && p.y >= 110 && p.y <= 130) || (p.x >= 195 && p.x <= 300);
+
+            // 4. DRAW (Only if NOT hidden by the ghost fix)
+            if (!(isWater && isNightPart && inZone)) {
+                let px = p.x*TILE-S.cam.x+sx, py = p.y*TILE-S.cam.y;
+                ctx.fillStyle=p.c; ctx.beginPath(); ctx.arc(px, py, p.s, 0, 6.28); ctx.fill();
+            }
+
             if(p.life<=0) p.dead=true;
         });
+
+
         S.parts = S.parts.filter(p => !p.dead);
+
+
+
+// ADD THIS LINE: Hard limit to 50 particles max to prevent lag spikes
+        // ADD THIS LINE: Hard limit to 400 particles max (Increased so dolphins don't vanish)
+if (S.parts.length > 400) S.parts.splice(0, S.parts.length - 400);
+
+
 
         // --- PASTE THIS AT THE BOTTOM OF draw(), BELOW S.parts ---
 
        // --- PASTE THIS AT THE BOTTOM OF draw() ---
 
         // --- LAYER 4: WEATHER & TIME OVERLAY ---
+        // --- LAYER 4: WEATHER & TIME OVERLAY (With Sky Hole) ---
+
+
+
+       // --- LAYER 4: WEATHER & TIME OVERLAY (With Shaped Sky Hole) ---
+        // --- LAYER 4: WEATHER & TIME OVERLAY (SEMI-OVAL CURVE FIX) ---
+       // 1. Determine Tint Color (SMOOTH TRANSITIONS)
+        let tR=0, tG=0, tB=0, tA=0; // Default: Day (Transparent)
         let m = S.farm.time;
 
-        // RAIN OVERLAY
-        if (S.farm.weather === 'rain') {
-            ctx.fillStyle = 'rgba(20, 30, 60, 0.3)'; // Gloomy Blue tint
-            ctx.fillRect(0, 0, cvs.width, cvs.height);
-            
-            ctx.strokeStyle = 'rgba(179, 229, 252, 0.6)';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            let rainTime = Date.now();
-            for(let i=0; i<80; i++) {
-                // Moving rain streaks
-                let rx = (Math.sin(i)*13920 + rainTime * 0.5) % (cvs.width + 100) - 50;
-                let ry = (Math.cos(i)*4920 + rainTime * 0.8) % cvs.height;
-                ctx.moveTo(rx, ry);
-                ctx.lineTo(rx - 5, ry + 15);
-            }
-            ctx.stroke();
-        }
+        // Helper: Linear Interpolation
+        const lerp = (start, end, p) => start + (end - start) * p;
+
+        // --- DEFINE COLOR STATES ---
+        // NIGHT: Deep Navy (0, 10, 50, 0.6)
+        // SUNSET: Warm Gold (255, 140, 0, 0.25)
         
-        // 1. SUNSET (4:00 PM to 7:00 PM)
-        // CRITICAL: Must check (m < 1140) so it stops when night starts
-        if (m >= 960 && m < 1140) { 
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.25)'; // Golden Yellow
-            ctx.fillRect(0,0,cvs.width,cvs.height);
-        } 
-        // 2. NIGHT (7:00 PM to 6:00 AM)
-        else if (m >= 1140 || m < 360) { 
-            ctx.fillStyle = 'rgba(0, 5, 25, 0.75)'; // Deep Dark Night
-            ctx.fillRect(0,0,cvs.width,cvs.height);
+        // A. 5:00 - 6:00 AM: NIGHT -> DAY (Fade Out)
+        if (m >= 300 && m < 360) {
+            let p = (m - 300) / 60; 
+            tR = lerp(0, 0, p);    tG = lerp(10, 0, p);
+            tB = lerp(50, 0, p);   tA = lerp(0.6, 0, p);
+        }
+
+        // B. 3:00 - 4:00 PM: DAY -> SUNSET (Fade In)
+        else if (m >= 900 && m < 960) {
+            let p = (m - 900) / 60;
+            tR = lerp(0, 255, p);  tG = lerp(0, 140, p);
+            tB = lerp(0, 0, p);    tA = lerp(0, 0.25, p);
+        }
+
+        // C. 4:00 - 7:00 PM: FULL SUNSET
+        else if (m >= 960 && m < 1140) {
+            tR = 255; tG = 140; tB = 0; tA = 0.25;
+        }
+
+        // D. 7:00 - 8:00 PM: SUNSET -> NIGHT (Color Shift)
+        else if (m >= 1140 && m < 1200) {
+            let p = (m - 1140) / 60;
+            tR = lerp(255, 0, p);  tG = lerp(140, 10, p);
+            tB = lerp(0, 50, p);   tA = lerp(0.25, 0.6, p);
+        }
+
+        // E. 8:00 PM - 5:00 AM: FULL NIGHT
+        else if (m >= 1200 || m < 300) {
+            tR = 0; tG = 10; tB = 50; tA = 0.6;
+        }
+
+        let tintColor = (tA > 0) ? `rgba(${Math.round(tR)},${Math.round(tG)},${Math.round(tB)},${tA})` : null;
+
+        if (tintColor) {
+            ctx.fillStyle = tintColor;
+            // ... (Keep existing Hole Cutting Logic below) ...
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(cvs.width, 0);
+            ctx.lineTo(cvs.width, cvs.height);
+            ctx.lineTo(0, cvs.height);
+            ctx.lineTo(0, 0);
+            // ... coordinate setup ...
+            // --- Coordinate Setup ---
+            // [NEW CODE]
+// ...
+            // ... coordinate setup ...
+            // --- Coordinate Setup ---
+            let skyL = 200 * TILE - S.cam.x + sx;
+            
+            // CHANGE THIS LINE: 275 -> 295
+            let skyR = 295 * TILE - S.cam.x + sx;
+            
+            let skyTop = 104 * TILE - S.cam.y;
+            // SHIFTED RIGHT +15 (207->222, 258->273)
+            let coveL = 222 * TILE - S.cam.x + sx;
+            let coveR = 273 * TILE - S.cam.x + sx;
+            let coveBaseY = 120 * TILE - S.cam.y;    
+            let covePeakY = coveBaseY - (7.0 * TILE); 
+
+            // Hole Logic
+// ...
+
+            // Hole Logic
+            ctx.lineTo(skyL, skyTop);
+            ctx.lineTo(skyL, coveBaseY);
+            ctx.lineTo(coveL, coveBaseY);
+            ctx.bezierCurveTo(coveL + (12 * TILE), covePeakY, coveR - (12 * TILE), covePeakY, coveR, coveBaseY);
+            ctx.lineTo(skyR, coveBaseY);
+            ctx.lineTo(skyR, skyTop);
+            ctx.lineTo(skyL, skyTop);
+
+
+
+
+
+
+
+
+// 1. FILL THE DARKNESS FIRST
+            // This applies the blue/sunset tint to the screen (cutting out the sky/cove hole defined above)
+            ctx.fill(); 
+
+            // 2. DRAW SOFT CAMPFIRE GLOW ON TOP
+            // We use 'lighter' blend mode to ADD light to the darkness.
+            // This ensures a smooth gradient with NO hard edges.
+            // 2. DRAW DYNAMIC CAMPFIRE GLOW
+            // FIX: We check the time (m). 
+            // - If Sunset: Use LOW intensity to prevent white-out.
+            // - If Night: Use HIGH intensity to cut through the darkness.
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter'; 
+
+
+
+
+
+            S.ents.forEach(e => {
+                if (e.kind === 'campfire' && e.lit) {
+                     let lx = (e.x + 1) * TILE - S.cam.x + sx; 
+                     let ly = (e.y + 1) * TILE - S.cam.y;
+                     
+
+
+
+
+
+
+
+                    // 1. SAFE INTENSITY LOGIC (Fixes 8PM Pop & Overexposure)
+                     let m = S.farm.time;
+                     let targetOp = 0.25; // Default low brightness for Day & Sunset
+
+                     // A. TRANSITION TO NIGHT (19:15 - 20:30)
+                     // We wait until the sun is GONE (19:15) before brightening the fire.
+                     // This prevents the "whiteout" look during sunset.
+                     if (m >= 1155 && m < 1230) {
+                         // Smoothly go from 0.25 -> 0.60
+                         targetOp = 0.25 + ((m - 1155) / 75) * 0.35;
+                     } 
+                     // B. FULL NIGHT (20:30 - 05:00)
+                     else if (m >= 1230 || m < 300) {
+                         targetOp = 0.60; 
+                     }
+                     // C. DAWN (05:00 - 06:00)
+                     else if (m >= 300 && m < 360) {
+                         targetOp = 0.60 - ((m - 300) / 60) * 0.35;
+                     }
+
+
+
+
+
+                    // --- [FIXED] PRE-FADE LOGIC v3 ---
+                     // 1. Calculate Fuel Ratio (0.0 to 1.0)
+                     let rawIntensity = (e.fuel > 40) ? 1.0 : (e.fuel / 40.0);
+
+                     // 2. Brightness Curve: Use Square Root
+                     // Keeps light BRIGHTER for longer, preventing the "black hole" look.
+                     let visualIntensity = Math.sqrt(rawIntensity);
+
+                     if (visualIntensity <= 0.001) return;
+
+                     // Base Opacity
+                     let baseOp = targetOp * visualIntensity;
+                     let midOp  = baseOp * 0.5;
+
+                     // 2. ANIMATION
+                     let sizePulse = Math.sin(Date.now() / 400) * 3; 
+                     let flicker = (Math.random() - 0.5) * 0.04; 
+
+
+
+
+                     // [FIX] Radius Logic: Don't shrink too much!
+                     // Keep scale above 0.8 so the light always covers the Ash Pit.
+                     // We rely on Opacity (baseOp) to do the fading, not size.
+                     let scale = 0.8 + (0.2 * rawIntensity); 
+                     let rad = (250 + sizePulse) * scale;
+                     
+                     // Keep inner radius small to maintain core brightness
+                     let g = ctx.createRadialGradient(lx, ly, 10, lx, ly, rad);
+                     
+
+
+
+
+                     // Core: Brighter Yellow/White (Covers the black ash)
+                     g.addColorStop(0, `rgba(255, 220, 100, ${Math.max(0, baseOp + flicker)})`); 
+                     
+                     // Mid: Standard Orange
+                     g.addColorStop(0.4, `rgba(200, 100, 50, ${Math.max(0, midOp + flicker)})`);
+                     
+                     // Edge: Fades to Pure Transparent (Fixes muddy halo)
+                     g.addColorStop(1, 'rgba(0, 0, 0, 0)'); 
+                     
+                     ctx.fillStyle = g;
+                     ctx.beginPath(); 
+                     ctx.arc(lx, ly, rad, 0, Math.PI*2); 
+                     ctx.fill();
+                }
+            });
+            ctx.restore();
         }
 
 
@@ -4805,6 +8223,519 @@ function draw() {
 
 
 
+
+
+// --- LAYER 4.5: REDRAW PLAYER (Alpha-Preserving Calc) ---
+        // Range: Cove/Sky Area (x=195 to 275)
+       // --- LAYER 4.5: REDRAW PLAYER (Standard Blend - Exact Match) ---
+        // Range: Cove/Sky Area (x=195 to 275)
+        // --- LAYER 4.5: REDRAW PLAYER (Alpha-Preserving Calc) ---
+        // Range: Cove/Sky Area (x=195 to 275)
+        // --- LAYER 4.5: REDRAW PLAYER (Alpha-Preserving Calc) ---
+        // Range: Cove/Sky Area (x=195 to 275)
+        // --- LAYER 4.5: REDRAW PLAYER (Alpha-Preserving Calc) ---
+        // --- LAYER 4.5: REDRAW PLAYER (Alpha-Preserving Calc) ---
+        // Range: Cove/Sky Area (x=195 to 295)
+        
+        // CHANGE THIS LINE: 275 -> 295
+        if (S.p.x >= 195 && S.p.x <= 295 && S.p.y <= 122) {
+            
+            let tR=0, tG=0, tB=0, tA=0;
+            let m = S.farm.time;
+            const lerp = (start, end, p) => start + (end - start) * p;
+
+            // 1. GET TINT COLORS (EXACT MATCH TO LAYER 4)
+            
+            // A. 5-6 AM (Fade Out)
+            if (m >= 300 && m < 360) {
+                let p = (m - 300) / 60; 
+                tR = lerp(0, 0, p); tG = lerp(10, 0, p); tB = lerp(50, 0, p); tA = lerp(0.6, 0, p);
+            }
+            // B. 3-4 PM (Fade In Sunset)
+            else if (m >= 900 && m < 960) {
+                let p = (m - 900) / 60;
+                tR = lerp(0, 255, p); tG = lerp(0, 140, p); tB = lerp(0, 0, p); tA = lerp(0, 0.25, p);
+            }
+            // C. 4-7 PM (Full Sunset)
+            else if (m >= 960 && m < 1140) {
+                tR = 255; tG = 140; tB = 0; tA = 0.25;
+            }
+            // D. 7-8 PM (Sunset -> Night)
+            else if (m >= 1140 && m < 1200) {
+                let p = (m - 1140) / 60;
+                tR = lerp(255, 0, p); tG = lerp(140, 10, p); tB = lerp(0, 50, p); tA = lerp(0.25, 0.6, p);
+            }
+            // E. 8 PM - 5 AM (Full Night)
+            else if (m >= 1200 || m < 300) {
+                tR = 0; tG = 10; tB = 50; tA = 0.6;
+            }
+
+            // Only redraw if there is a tint
+            if (tA > 0) {
+                let gx = Math.floor(S.p.x * TILE - S.cam.x + sx);
+                let gy = Math.floor(S.p.y * TILE - S.cam.y);
+
+                // 2. MIX FUNCTION (Standard Alpha Composite)
+                const mix = (colorStr) => {
+                    let r=0, g=0, b=0, a=1; 
+
+                    if (colorStr.startsWith('#')) {
+                        let hex = colorStr.slice(1);
+                        if (hex.length === 3) hex = hex[0]+hex[0] + hex[1]+hex[1] + hex[2]+hex[2];
+                        let val = parseInt(hex, 16);
+                        r = (val >> 16) & 255; g = (val >> 8) & 255; b = val & 255;
+                    } 
+                    else if (colorStr.startsWith('rgb')) {
+                        let parts = colorStr.match(/[\d.]+/g);
+                        if(parts) { 
+                            r=parseInt(parts[0]); g=parseInt(parts[1]); b=parseInt(parts[2]);
+                            if (parts[3]) a = parseFloat(parts[3]); 
+                        }
+                    } 
+                    else return colorStr; 
+
+                    // BLEND FORMULA
+                    let finalR = Math.floor(r * (1 - tA) + tR * tA);
+                    let finalG = Math.floor(g * (1 - tA) + tG * tA);
+                    let finalB = Math.floor(b * (1 - tA) + tB * tA);
+
+                    return `rgba(${finalR},${finalG},${finalB},${a})`;
+                };
+
+                // 3. CONTEXT PROXY & DRAW
+                let realCtx = ctx;
+                let proxyCtx = new Proxy(realCtx, {
+                    set: function(target, prop, value) {
+                        if (prop === 'fillStyle' || prop === 'strokeStyle') { target[prop] = mix(value); } 
+                        else { target[prop] = value; }
+                        return true;
+                    },
+                    get: function(target, prop) {
+                        let val = target[prop];
+                        if (typeof val === 'function') return val.bind(target);
+                        return val;
+                    }
+                });
+
+
+
+
+
+
+
+                ctx = proxyCtx; 
+                
+                // 1. SETUP COORDINATES (Match main draw loop variables)
+                let x = gx; 
+                let y = gy;
+                let heroDrawn = false;
+
+                // 2. DRAW BOAT (Full Logic Copy)
+                if (S.p.isBoating) {
+                    ctx.save();
+
+                    // Helper: Draw hero sandwiched inside boat
+                    const injectHero = () => {
+                        ctx.save(); 
+                        ctx.setTransform(1, 0, 0, 1, 0, 0); // Reset to global
+                        drawHero(x, y); 
+                        heroDrawn = true; 
+                        ctx.restore(); // Restore boat transform
+                    };
+
+                    // Positioning
+                    ctx.translate(x + 25, y + 45); 
+                    ctx.scale(1.6, 1.6); 
+
+                    let time = Date.now();
+                    let dir = S.p.dir;
+                    
+                    let bob = Math.sin(time / 450) * 1.5; 
+                    let roll = Math.sin(time / 700) * 0.04; 
+                    
+                    let isMoving = (S.input.keys['arrowup'] || S.input.keys['arrowdown'] || 
+                                    S.input.keys['arrowleft'] || S.input.keys['arrowright']);
+                    
+                    let rowCycle = isMoving ? (time / 220) : 1.5; 
+                    let oarSwing = Math.sin(rowCycle) * 0.6; 
+                    let oarLift = Math.cos(rowCycle); 
+                    
+                    // PALETTE
+                    const C_HULL_BASE='#5d4037', C_HULL_DARK='#3e2723', C_HULL_TRIM='#8d6e63'; 
+                    const C_INT_DARK='#281a17', C_RIBS='#4e342e'; 
+                    const C_OAR_SHAFT='#d7ccc8', C_OAR_BLADE='#a1887f', C_BRASS='#ffb74d'; 
+                    const WATER_LEVEL = 10; 
+
+                    // Wake
+                    ctx.save();
+                    ctx.scale(1, 0.3);
+                    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
+                    ctx.beginPath(); ctx.arc(0, 40, 40 + Math.sin(time/300)*3, 0, 6.28); ctx.fill();
+                    ctx.restore();
+
+                    ctx.rotate(roll);
+                    ctx.translate(0, bob);
+
+                    const drawBlade = (ctxRef, isSubmerged) => {
+                        ctxRef.beginPath(); ctxRef.moveTo(-2, 0); ctxRef.lineTo(-4, 14);  
+                        ctxRef.lineTo(4, 14); ctxRef.lineTo(2, 0); ctxRef.closePath();
+                        if (isSubmerged) {
+                            ctxRef.fillStyle = 'rgba(62, 39, 35, 0.5)'; ctxRef.fill();
+                            ctxRef.strokeStyle = 'rgba(255, 255, 255, 0.4)'; ctxRef.lineWidth = 1;
+                            ctxRef.beginPath(); ctxRef.moveTo(-6, 2); ctxRef.lineTo(6, 2); ctxRef.stroke();
+                        } else {
+                            ctxRef.fillStyle = C_OAR_BLADE; ctxRef.fill();
+                            ctxRef.fillStyle = 'rgba(0,0,0,0.1)'; ctxRef.fillRect(-0.5, 0, 1, 14);
+                        }
+                    };
+
+                    // ==========================================
+                    // === SIDE VIEW (Left/Right) ===
+                    // ==========================================
+                    if (dir === 1 || dir === 3) { 
+                        let flip = (dir===3) ? -1 : 1;
+                        ctx.scale(flip, 1);
+
+                        const drawSideOar = (isFar) => {
+                            let angle = 0.55 + (isMoving ? Math.sin(isMoving ? time/220 : 0)*0.5 : 0) + (isFar ? 0 : 0.1);
+                            let dx = Math.cos(angle), dy = Math.sin(angle);
+                            let px = -4, py = -6;
+                            
+                            // Handle
+                            ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+                            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px - (dx * 12), py - (dy * 12)); ctx.stroke();
+
+                            // Shaft
+                            let stickLen = 36; let tipX = px + (dx * stickLen); let tipY = py + (dy * stickLen);
+                            let isSubmerged = (tipY > 5);
+                            if (isFar && isSubmerged) {
+                                let t = (5 - py) / (tipY - py);
+                                tipX = px + (dx * stickLen * t); tipY = 5;
+                            }
+                            ctx.strokeStyle = C_OAR_SHAFT; ctx.lineWidth = 2;
+                            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(tipX, tipY); ctx.stroke();
+
+                            // Blade
+                            if (isFar && isSubmerged) return;
+                            ctx.save(); ctx.translate(tipX, tipY); ctx.rotate(angle - Math.PI/2);
+                            if (isSubmerged) {
+                                ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-4, 16); ctx.lineTo(4, 16); ctx.lineTo(2, 0); 
+                                ctx.fillStyle = 'rgba(62, 39, 35, 0.5)'; ctx.fill();
+                            } else {
+                                ctx.beginPath(); ctx.moveTo(-2, 0); ctx.lineTo(-4, 16); ctx.lineTo(4, 16); ctx.lineTo(2, 0); ctx.closePath();
+                                ctx.fillStyle = C_OAR_BLADE; ctx.fill();
+                            }
+                            ctx.restore();
+                        };
+
+                        // 1. Far Oar
+                        drawSideOar(true);
+
+                        // 2. Interior
+                        ctx.fillStyle = C_INT_DARK;
+                        ctx.beginPath();
+                        ctx.moveTo(-30, -5); ctx.quadraticCurveTo(0, 6, 36, -12);
+                        ctx.lineTo(36, -4); ctx.quadraticCurveTo(0, 14, -30, 0); ctx.fill();
+
+                        // 3. Player
+                        injectHero();
+
+                        // 4. Hull
+                        ctx.fillStyle = C_HULL_BASE;
+                        ctx.beginPath();
+                        ctx.moveTo(-32, -4); ctx.quadraticCurveTo(0, 14, 38, -12);
+                        ctx.lineTo(32, 8); ctx.quadraticCurveTo(0, 20, -28, 8); ctx.fill();
+
+                        ctx.strokeStyle = C_HULL_DARK; ctx.lineWidth = 1;
+                        ctx.beginPath(); ctx.moveTo(-31, 0); ctx.quadraticCurveTo(0, 16, 36, -8); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(-29, 5); ctx.quadraticCurveTo(0, 18, 34, 0); ctx.stroke();
+
+                        ctx.strokeStyle = C_HULL_TRIM; ctx.lineWidth = 2.5;
+                        ctx.beginPath(); ctx.moveTo(-32, -4); ctx.quadraticCurveTo(0, 14, 38, -12); ctx.stroke();
+                        
+                        ctx.fillStyle = C_BRASS; ctx.fillRect(-7, -2, 4, 3);
+
+                        // 5. Near Oar
+                        drawSideOar(false);
+                    }
+                    // ==========================================
+                    // === VERTICAL VIEW ===
+                    // ==========================================
+                    else { 
+                        const drawVertOar = (side) => { 
+                            ctx.save(); ctx.translate(side * 19, -9);
+                            let angle = (side === -1) ? (Math.PI - 0.7 + oarSwing*0.3) : (0.7 - oarSwing*0.3);
+                            let len = (isMoving && oarLift < -0.2) ? 20 : 26; 
+                            let tipX = Math.cos(angle) * len; let tipY = Math.sin(angle) * len;
+                            
+                            ctx.strokeStyle = '#3e2723'; ctx.lineWidth = 2;
+                            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-Math.cos(angle)*15, -Math.sin(angle)*15); ctx.stroke();
+                            ctx.strokeStyle = C_OAR_SHAFT; 
+                            ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(tipX, tipY); ctx.stroke();
+                            
+                            ctx.translate(tipX, tipY); ctx.rotate(angle - Math.PI/2); 
+                            let depth = -9 + tipY; 
+                            if (depth + 14 > WATER_LEVEL) {
+                                ctx.save(); ctx.beginPath(); ctx.rect(-10, WATER_LEVEL - depth, 20, 20); ctx.clip(); drawBlade(ctx, true); ctx.restore();
+                            }
+                            if (depth < WATER_LEVEL) {
+                                ctx.save(); ctx.beginPath(); ctx.rect(-10, -20, 20, WATER_LEVEL - depth); ctx.clip(); drawBlade(ctx, false); ctx.restore();
+                            }
+                            ctx.restore();
+                        };
+
+                        drawVertOar(-1);
+                        drawVertOar(1);
+
+                        ctx.save();
+                        ctx.scale(1, 0.75);
+
+                        if (dir === 2) { // FRONT VIEW (Facing Camera)
+                            // 1. Interior
+                            ctx.fillStyle = C_INT_DARK;
+                            ctx.beginPath(); ctx.ellipse(0, -6, 18, 7, 0, 0, 6.28); ctx.fill();
+                            ctx.strokeStyle = C_RIBS; ctx.lineWidth = 2;
+                            ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(0, 1); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(-9, -10); ctx.lineTo(-7, 0); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(9, -10); ctx.lineTo(7, 0); ctx.stroke();
+
+                            // 2. Player
+                            injectHero(); 
+
+                            // 3. Front Rim
+                            ctx.fillStyle = C_HULL_TRIM; ctx.fillRect(-12, -8, 24, 3); ctx.fillRect(-11, -3, 22, 3); 
+                            ctx.fillStyle = C_HULL_BASE; ctx.beginPath(); ctx.moveTo(-20, -6); ctx.quadraticCurveTo(0, 30, 20, -6); ctx.fill();
+                            ctx.strokeStyle = C_HULL_DARK; ctx.lineWidth = 1;
+                            ctx.beginPath(); ctx.moveTo(-17, 4); ctx.quadraticCurveTo(0, 22, 17, 4); ctx.stroke();
+                            ctx.beginPath(); ctx.moveTo(-15, 12); ctx.quadraticCurveTo(0, 24, 15, 12); ctx.stroke();
+                            ctx.strokeStyle = C_HULL_TRIM; ctx.lineWidth = 3;
+                            ctx.beginPath(); ctx.moveTo(-20, -6); ctx.quadraticCurveTo(0, 6, 20, -6); ctx.stroke();
+                            ctx.fillStyle = C_HULL_TRIM; ctx.beginPath(); ctx.moveTo(-2, 22); ctx.lineTo(2, 22); ctx.lineTo(0, 26); ctx.fill();
+
+                        
+                            
+                           } else { // Back View (Combined: Sturdy + Horizontal Bar)
+                            
+                            // 1. BOTTOM LAYER: Hull & Seat
+                            // Main body
+                            ctx.fillStyle = C_HULL_BASE;
+                            ctx.beginPath(); ctx.moveTo(-19, -10); ctx.quadraticCurveTo(0, 24, 19, -10); ctx.fill();
+                            
+                            // The Seat (Darker - Player sits on this)
+                            ctx.fillStyle = C_HULL_DARK; 
+                            ctx.fillRect(-15, -12, 30, 6); 
+
+                            // 2. MIDDLE LAYER: Player
+                            injectHero();
+
+                            // 3. TOP LAYER: The Transom (Back Wall)
+                            
+                            // A. Hull Mask (Covers legs)
+                            // Curves down from the bar to the water
+                            ctx.fillStyle = C_HULL_BASE;
+                            ctx.beginPath(); 
+                            ctx.moveTo(-18, -6); 
+                            ctx.quadraticCurveTo(0, 22, 18, -6); 
+                            ctx.fill();
+
+                            // B. The Horizontal Bar (The distinct beam)
+                            let barY = -10;
+                            
+                            // Main Beam
+                            ctx.fillStyle = C_HULL_TRIM; 
+                            ctx.fillRect(-20, barY, 40, 6); 
+
+                            // Brass Nails on the ends
+                            ctx.fillStyle = C_BRASS;
+                            ctx.fillRect(-18, barY + 2, 2, 2);
+                            ctx.fillRect(16, barY + 2, 2, 2);
+
+                            // Shadow under the bar (Depth)
+                            ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                            ctx.fillRect(-18, barY + 6, 36, 2);
+
+                            // C. Sturdy Outer Rim
+                            // Connects the horizontal bar to the curved hull
+                            ctx.strokeStyle = C_HULL_TRIM; 
+                            ctx.lineWidth = 3; 
+                            ctx.beginPath(); 
+                            ctx.moveTo(-20, barY + 3); 
+                            ctx.quadraticCurveTo(0, 25, 20, barY + 3); 
+                            ctx.stroke();
+                        }
+                        
+                        
+                        ctx.restore();
+
+                        // Oarlocks
+                        ctx.fillStyle = C_BRASS;
+                        let lockY = (dir===2) ? -8 : -10;
+                        ctx.fillRect(-20, lockY, 3, 4); ctx.fillRect(17, lockY, 3, 4);
+                    }
+                    
+                    ctx.restore();
+                }
+
+                // 3. Draw Hero if NOT in boat (Double Check)
+                if (!heroDrawn) drawHero(x, y);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                ctx = realCtx; 
+            }
+        }
+
+
+
+
+
+
+
+
+
+// --- LAYER 4.6: INDEPENDENT DOLPHIN REDRAW (Fixes Tint Glitch) ---
+        // Runs after darkness layer, regardless of player position.
+        
+        // --- LAYER 4.6: INDEPENDENT DOLPHIN & PARTICLE REDRAW (Alignment Fix) ---
+// Fixes "Half-Bright" glitch by matching coordinates exactly (No Math.floor).
+// Runs after the darkness layer to ensure dolphins are tinted correctly everywhere.
+
+let t = S.farm.time;
+let needsRedraw = (t >= 900 || t < 360); // Only run at Sunset/Night
+
+if (needsRedraw) {
+    // 1. RE-CALCULATE TINT (Must match Layer 4 Overlay exactly)
+    let tR=0, tG=0, tB=0, tA=0;
+    const lerp = (start, end, p) => start + (end - start) * p;
+
+    if (t >= 300 && t < 360) { let p=(t-300)/60; tR=lerp(0,0,p); tG=lerp(10,0,p); tB=lerp(50,0,p); tA=lerp(0.6,0,p); }
+    else if (t >= 900 && t < 960) { let p=(t-900)/60; tR=lerp(0,255,p); tG=lerp(0,140,p); tB=lerp(0,0,p); tA=lerp(0,0.25,p); }
+    else if (t >= 960 && t < 1140) { tR=255; tG=140; tB=0; tA=0.25; }
+    else if (t >= 1140 && t < 1200) { let p=(t-1140)/60; tR=lerp(255,0,p); tG=lerp(140,10,p); tB=lerp(0,50,p); tA=lerp(0.25,0.6,p); }
+    else if (t >= 1200 || t < 300) { tR=0; tG=10; tB=50; tA=0.6; }
+
+    // 2. HELPER: Mix Tint into ANY Color (Generic Hex/RGB)
+    const mix = (color) => {
+        let r=0, g=0, b=0;
+        // Parse Hex
+        if(color.startsWith('#')) {
+            let hex = color.slice(1);
+            if(hex.length === 3) hex = hex[0]+hex[0]+hex[1]+hex[1]+hex[2]+hex[2];
+            let bigint = parseInt(hex, 16);
+            r = (bigint >> 16) & 255;
+            g = (bigint >> 8) & 255;
+            b = bigint & 255;
+        } 
+        // Parse RGB (fallback)
+        else if (color.startsWith('rgb')) {
+            let parts = color.match(/\d+/g);
+            if(parts) { r=parseInt(parts[0]); g=parseInt(parts[1]); b=parseInt(parts[2]); }
+        }
+
+        // Apply Tint Math
+        let finalR = Math.floor(r * (1 - tA) + tR * tA);
+        let finalG = Math.floor(g * (1 - tA) + tG * tA);
+        let finalB = Math.floor(b * (1 - tA) + tB * tA);
+        return `rgb(${finalR},${finalG},${finalB})`;
+    };
+
+    // 3. REDRAW PARTICLES
+   // 3. REDRAW PARTICLES
+    S.parts.forEach(p => {
+        // Redraw water particles (Splash/Wake)
+        if (p.c === '#b3e5fc' || p.c === '#00b0ff' || p.c === '#ffffff') {
+            
+            // === NEW: COVE MASK CHECK ===
+            if (p.x >= 222 && p.x <= 273) {
+                let relX = p.x - 222;
+                const p1x=12, p2x=39, p3x=51;
+                let t = relX / 51.0; 
+                for(let i=0; i<4; i++) { 
+                    let inv = 1-t;
+                    let bx = (3*inv*inv*t * p1x) + (3*inv*t*t * p2x) + (t*t*t * p3x);
+                    let slope = (3*inv*inv * p1x) + (6*inv*t * (p2x-p1x)) + (3*t*t * (p3x-p2x));
+                    if (Math.abs(slope) > 0.001) t -= (bx - relX) / slope;
+                }
+                let inv = 1-t;
+                let curveY = 120 - ((3*inv*inv*t * 7.0) + (3*inv*t*t * 7.0));
+
+                // If above the curve line, DO NOT DRAW
+                if (p.y < curveY + 0.2) return; 
+            }
+            // ============================
+
+            // Exact coordinates (No floor)
+            let px = p.x * TILE - S.cam.x + sx;
+            let py = p.y * TILE - S.cam.y;
+            ctx.fillStyle = mix(p.c); 
+            ctx.beginPath(); ctx.arc(px, py, p.s, 0, 6.28); ctx.fill();
+        }
+    });
+
+    // 4. REDRAW DOLPHINS
+    S.parts.forEach(p => {
+        if (p.type !== 'dolphin') return;
+
+        // *** FIX: REMOVED Math.floor() to prevent 0.5px ghosting ***
+        let dx = p.x * TILE - S.cam.x + sx;
+        let dy = p.y * TILE - S.cam.y;
+        
+        // Skip if way off screen
+        if (dx < -100 || dx > cvs.width + 100) return;
+
+        let rot = Math.atan2(p.vy, Math.abs(p.vx) * 0.5);
+
+        ctx.save();
+        ctx.translate(dx, dy);
+        ctx.scale(p.dir * 3.0, 3.0); 
+        ctx.rotate(rot);
+
+        // --- TINTED DOLPHIN ART ---
+        // We use mix() on every color to ensure it matches the night/sunset perfectly
+        
+        // Body
+        ctx.fillStyle = mix('#78909c'); 
+        ctx.beginPath(); ctx.moveTo(-20, 0); ctx.quadraticCurveTo(-5, -14, 8, -10); 
+        ctx.quadraticCurveTo(14, -9, 14, -2); ctx.lineTo(22, 0); ctx.lineTo(15, 3);
+        ctx.quadraticCurveTo(0, 10, -20, 0); ctx.fill();
+
+        // Belly
+        ctx.fillStyle = mix('#eceff1'); 
+        ctx.beginPath(); ctx.moveTo(15, 3); ctx.quadraticCurveTo(5, 7, -12, 1); 
+        ctx.lineTo(15, 3); ctx.fill();
+
+        // Fins
+        ctx.fillStyle = mix('#546e7a'); 
+        ctx.beginPath(); ctx.moveTo(-2, -11); ctx.quadraticCurveTo(1, -20, 6, -10); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(7, 3, 5, 2, 0.6, 0, 6.28); ctx.fill(); 
+
+        // Tail
+        ctx.beginPath(); ctx.moveTo(-18, 0); ctx.lineTo(-26, -6); 
+        ctx.lineTo(-22, 0); ctx.lineTo(-26, 6); ctx.lineTo(-18, 0); ctx.fill();
+
+        // Details
+        ctx.fillStyle = mix('#37474f'); 
+        ctx.fillRect(16, 2, 4, 1); 
+        ctx.beginPath(); ctx.arc(13, -2, 1, 0, 6.28); ctx.fill(); 
+
+        ctx.restore();
+    });
+}
 
 
 
@@ -4894,21 +8825,63 @@ function draw() {
 
 
 
+// --- PASTE THIS NEW CODE HERE ---
+        // --- LAYER 4.8: RAIN VISUALS ---
+        if (S.farm.weather === 'rain') {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(200, 230, 255, 0.6)'; // Light Blue/White
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+
+            let rTime = Date.now() / 40; // Rain Speed
+            let rainCount = 400;         // Density
+            
+            // Camera Parallax for Rain
+            let camOffX = S.cam.x * 0.8; 
+            let camOffY = S.cam.y * 0.8;
+
+            for (let i = 0; i < rainCount; i++) {
+                // Pseudo-random positions based on index (Stable noise)
+                let rx = (Math.sin(i * 12.9898) * 43758.5453) * (cvs.width + 400); 
+                let ry = (Math.cos(i * 78.233) * 43758.5453) * (cvs.height + 400);
+
+                // Animate (Fall down + Slight slant left)
+                let dropX = (rx - (rTime * 2) - camOffX) % (cvs.width + 200); 
+                let dropY = (ry + (rTime * 12) - camOffY) % (cvs.height + 200);
+
+                // Wrap around logic to keep them on screen
+                if (dropX < -100) dropX += (cvs.width + 200);
+                if (dropY < -100) dropY += (cvs.height + 200);
+
+                // Draw streak
+                ctx.moveTo(dropX, dropY);
+                ctx.lineTo(dropX - 2, dropY + 12);
+            }
+            ctx.stroke();
+            
+            // Optional: Draw subtle gloom overlay
+            ctx.fillStyle = 'rgba(20, 30, 40, 0.15)'; 
+            ctx.fillRect(0, 0, cvs.width, cvs.height);
+            
+            ctx.restore();
+        }
 
 
 
 
-        // --- LAYER 5: UI & CLOCK ---
-        
-        // --- LAYER 5: UI & CLOCK ---
-        // Only draw if player is in farm AND no menu is open
+
+
+
         // --- LAYER 5: UI & CLOCK ---
         // Only draw if player is in farm
         if (S.p.x > 118) {  
             
-           // === DRAW STATS BOX ===
-            ctx.save();
+           // === DRAW STATS BOX (Hide if Boating) ===
+           if (!S.p.isBoating) {
+                ctx.save();
             
+
+
             // 1. Background Box
             ctx.fillStyle = 'rgba(46, 125, 50, 0.9)'; 
             ctx.strokeStyle = '#81c784'; 
@@ -4933,13 +8906,14 @@ function draw() {
             ctx.fillStyle = '#fff';
             ctx.fillText("Money:", 130, textY);
             
-            ctx.fillStyle = '#ffd700'; 
+           ctx.fillStyle = '#ffd700'; 
             ctx.fillText(S.farm.money + "g", 210, textY);
             
             ctx.restore();
+           } // <--- CLOSING THE (!isBoating) CHECK HERE
 
             // === DRAW CLOCK (Always Visible) ===
-            let clkX = cvs.width - 50; 
+            let clkX = cvs.width - 50;
             let clkY = 50;              
             let clkR = 35;
             
@@ -4977,7 +8951,7 @@ function draw() {
 
         // --- 3. CONTEXT MENUS (Bag / Ground / Sleep / Animals) ---
            // --- CONTEXT MENUS ---
-        if (S.ui === 'bag_opt' || S.ui === 'item_opt' || S.ui === 'sleep_opt' || S.ui === 'chicken_opt' || S.ui === 'cow_opt' || S.ui === 'pet_opt' || S.ui === 'horse_opt') {
+        if (S.ui === 'bag_opt' || S.ui === 'item_opt' || S.ui === 'sleep_opt' || S.ui === 'chicken_opt' || S.ui === 'cow_opt' || S.ui === 'pet_opt' || S.ui === 'horse_opt'|| S.ui === 'boat_opt' || S.ui === 'fire_opt') {
             
             let opts = [];
             
@@ -5002,6 +8976,11 @@ function draw() {
 
 
 
+
+
+
+
+
 		// 4.5 PET MENU
             else if (S.ui === 'pet_opt') {
                 // If following -> Button says "Roam"
@@ -5012,9 +8991,25 @@ function draw() {
             }
 
 
+
+
+// --- PASTE THIS NEW BLOCK HERE ---
+// 5. CAMPFIRE MENU
+else if (S.ui === 'fire_opt') {
+                 let txt = S.menuTarget.lit ? "Stoke (+3h)" : "Light Fire (3h)";
+                 opts = [txt, "Cancel"];
+            }
+
+
+
 		else if (S.ui === 'horse_opt') {
                 opts = ["Pet", "Ride", "Cancel"];
             }
+else if (S.ui === 'boat_opt') {
+                opts = ["Sail", "Cancel"];
+        }
+
+
 
 
 
@@ -5205,7 +9200,7 @@ function solid(x, y, ignoreEnt) {
             }
 
             // B. Trees (Trunk Collision)
-            if (e.kind === 'tree_apple' || e.kind === 'tree_orange') {
+            if (e.kind === 'tree_apple' || e.kind === 'tree_orange' || e.kind === 'tree_coconut') {
                 if (x >= e.x && x < e.x + 3 && y >= e.y && y < e.y + 3) {
                     if ((iy - e.y) >= 2 && (ix - e.x) === 1) return true;
                 }
@@ -5216,6 +9211,20 @@ function solid(x, y, ignoreEnt) {
                 continue;
             }
 
+            // --- FIX: BUFFERED STUCK PROTECTION ---
+            if (e.kind === 'boat' && S.p) {
+                 // If player is even SLIGHTLY inside the boat (buffer 0.2), ignore collision
+                 // This prevents getting stuck on the edge after dismounting
+                 let buffer = 0.2;
+                 if (S.p.x + 0.5 >= e.x - buffer && S.p.x + 0.5 < e.x + e.w + buffer && 
+                     S.p.y + 0.5 >= e.y - buffer && S.p.y + 0.5 < e.y + e.h + buffer) {
+                     continue; 
+                 }
+            }
+            // --------------------------------------
+
+            // C. General Obstacles
+
             // C. General Obstacles
             
             // --- FIX: ANIMAL GHOSTING ---
@@ -5224,6 +9233,27 @@ function solid(x, y, ignoreEnt) {
             if (ignoreEnt && farmAnimals.includes(ignoreEnt.type) && farmAnimals.includes(e.type)) {
                 continue; 
             }
+
+
+
+// --- NEW: STUCK PROTECTION (Boat) ---
+            // If the player is currently standing INSIDE a boat (e.g. just dismounted),
+            // ignore that boat's collision so they can walk out of it.
+            if (e.kind === 'boat' && S.p) {
+                 // Check if player's CENTER is inside this boat
+                 let px = S.p.x + 0.5; 
+                 let py = S.p.y + 0.5;
+                 
+                 // If we are overlapping, treat boat as non-solid
+                 if (px >= e.x && px < e.x + e.w && py >= e.y && py < e.y + e.h) {
+                     continue; 
+                 }
+            }
+            // ------------------------------------
+
+
+
+
             // ----------------------------
 
             if (x >= e.x && x < e.x + e.w && y >= e.y && y < e.y + e.h) {
@@ -5259,6 +9289,13 @@ function addEnt(type, kind, x, y) {
         else if (kind === 'dog' || kind === 'cat') { w = 1; h = 1; }
         else if (kind === 'horse') { w = 1.2; h = 1.2; }
         else if (kind === 'cow') { w = 1.4; h = 1.4; }
+// --- DEFINE BOAT SIZE (2x2) ---
+        // --- DEFINE BOAT SIZE (HUGE: 3 Wide, 2 Tall) ---
+        else if (kind === 'boat') { w = 3; h = 2; }
+
+ // --- ADD/REPLACE THIS LINE ---
+        else if (kind === 'campfire') { w = 2; h = 2; }
+
 
         let e = { type, kind, x, y, w, h };
 
@@ -5560,40 +9597,43 @@ function drawHero(x, y) {
         let dir = S.p.dir; 
         let cls = S.p.class || 'warrior';
         
-        let isMoving = (S.input.keys['arrowup']||S.input.keys['arrowdown']||S.input.keys['arrowleft']||S.input.keys['arrowright']);
-        let tick = Date.now() / 150;
-        let bob = Math.sin(tick) * 1.5;
-        // Disable walking animation if riding
-        let walk = (isMoving && !S.p.isRiding) ? Math.sin(tick * 3) : 0;
-        
-        ctx.save();
-        
-        // 1. POSITION & SCALE (1.3x)
-        ctx.translate(x + 25, y + 42); 
-        ctx.scale(1.3, 1.3); 
-        
-        if (dir === 3) ctx.scale(-1, 1); 
 
-        // --- COLOR PALETTES ---
-        let cSkin='#ffe0bd', cEye='#111';
-        let cMain, cSec, cAcc, cDark, cBoot, cHair, cHigh;
 
-        if(cls === 'warrior') { 
-            cMain='#eceff1'; cSec='#1565c0'; cAcc='#ffd700'; cDark='#455a64'; cBoot='#37474f';
-            cHair='#3e2723'; cHigh='#ffffff';
-        } else if(cls === 'mage') { 
-            cMain='#4527a0'; cSec='#7c4dff'; cAcc='#00e5ff'; cDark='#311b92'; cBoot='#1a1a1a';
-            cHair='#ffe082'; cHigh='#b388ff';
-        } else { 
-            // RANGER
-            cMain='#37474f'; cSec='#ff6d00'; cAcc='#ffeb3b'; cDark='#263238'; cBoot='#212121';
-            cHair='#5d4037'; cHigh='#ff9e80';
-        }
 
-        // --- RIDING LIFT ---
-        // Lift hero higher so legs sit ON the horse, not inside it
-        let lift = S.p.isRiding ? 14 : 0;
-        ctx.translate(0, -lift);
+
+     let isMoving = (S.input.keys['arrowup']||S.input.keys['arrowdown']||S.input.keys['arrowleft']||S.input.keys['arrowright']);
+    let tick = Date.now() / 150;
+    
+    // --- CHANGE 1: STOP BOBBING IF BOATING ---
+    let bob = (S.p.isBoating) ? 0 : Math.sin(tick) * 1.5;
+    let walk = (isMoving && !S.p.isRiding && !S.p.isBoating) ? Math.sin(tick * 3) : 0;
+    
+    ctx.save();
+    
+    // 1. POSITION & SCALE (1.3x)
+    ctx.translate(x + 25, y + 42); 
+    ctx.scale(1.3, 1.3); 
+    
+    if (dir === 3) ctx.scale(-1, 1); 
+
+    // --- COLOR PALETTES (Keep your existing color code here...) ---
+    let cSkin='#ffe0bd', cEye='#111';
+    let cMain, cSec, cAcc, cDark, cBoot, cHair, cHigh;
+    if(cls === 'warrior') { cMain='#eceff1'; cSec='#1565c0'; cAcc='#ffd700'; cDark='#455a64'; cBoot='#37474f'; cHair='#3e2723'; cHigh='#ffffff'; } 
+    else if(cls === 'mage') { cMain='#4527a0'; cSec='#7c4dff'; cAcc='#00e5ff'; cDark='#311b92'; cBoot='#1a1a1a'; cHair='#ffe082'; cHigh='#b388ff'; } 
+    else { cMain='#37474f'; cSec='#ff6d00'; cAcc='#ffeb3b'; cDark='#263238'; cBoot='#212121'; cHair='#5d4037'; cHigh='#ff9e80'; }
+
+    // --- CHANGE 2: LIFT LOGIC ---
+    let lift = S.p.isRiding ? 14 : 0;
+    if (S.p.isBoating) lift = -8; // Sink player into boat
+    ctx.translate(0, -lift);
+
+    // --- CHANGE 3: SHADOW LOGIC ---
+    if(!S.p.isRiding && !S.p.isBoating) {
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath(); ctx.ellipse(0, 0, 10, 4, 0, 0, 6.28); ctx.fill();
+    }
+
 
         // --- SHADOW (Only if NOT riding) ---
         if(!S.p.isRiding) {
@@ -5606,6 +9646,9 @@ function drawHero(x, y) {
             ctx.fillStyle = color; ctx.fillRect(bx, by, w, h); 
             ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(bx, by + h - 2, w, 2); 
         };
+
+
+
 
         if (S.p.isRiding) {
             // === RIDING POSE ===
@@ -5716,22 +9759,194 @@ function drawHero(x, y) {
             else ctx.fillRect(-4, headY+12, 8, 4);
         }
 
-        // 4. ARMS (Static if Riding)
+
+
+
+        // 4. ARMS (FIXED OFFSET & ANCHORS)
         ctx.fillStyle = cMain;
         
-        // Calculate Arm Swing (Stop if Riding)
-        let armS = (dir===2 && isMoving && !S.p.isRiding) ? -walk : 0;
-        let sideArm = (S.p.isRiding) ? 2 : (walk*3); // Static arm if riding
+        if (S.p.isBoating) {
+            let time = Date.now();
+            let isMoving = (S.input.keys['arrowup']||S.input.keys['arrowdown']||S.input.keys['arrowleft']||S.input.keys['arrowright']);
+            
+            // Physics Sync (Must match Boat Logic exactly)
+            let boatBob = Math.sin(time / 450) * 1.5; 
+            let rowCycle = isMoving ? (time / 220) : 1.5; 
+            let oarSwing = Math.sin(rowCycle) * 0.6; 
+            
+            // --- COORDINATE MAPPER ---
+            // Maps a point from Boat-Space (Scale 1.6, Y+45) to Player-Space (Scale 1.3, Y+42)
+            const getGripPoint = (bX, bY) => {
+                // 1. Boat Local -> Screen Pixels (relative to tile center)
+                let screenX = bX * 1.6;
+                let screenY = (bY + boatBob) * 1.6 + 3; 
 
-        if(dir === 0 || dir === 2) { 
-            ctx.fillStyle = (cls==='warrior') ? cMain : cSec; ctx.fillRect(-14, bodyY, 5, 5); ctx.fillRect(9, bodyY, 5, 5);
-            ctx.fillStyle = (cls==='warrior') ? cDark : cMain; ctx.fillRect(-13, bodyY+3+armS, 4, 2); ctx.fillRect(9, bodyY+3-armS, 4, 2);
-            ctx.fillStyle = (cls==='warrior') ? cMain : cSkin; ctx.fillRect(-13, bodyY + 5 + armS, 4, 7); ctx.fillRect(9, bodyY + 5 - armS, 4, 7);
-            ctx.fillStyle = (cls==='mage') ? cSkin : cDark; ctx.fillRect(-13, bodyY + 10 + armS, 4, 3); ctx.fillRect(9, bodyY + 10 - armS, 4, 3);
-        } else { 
-            ctx.fillStyle = (cls==='warrior') ? cMain : cSec; ctx.fillRect(sideArm, bodyY + 2, 4, 6);
-            ctx.fillStyle = (cls==='warrior') ? cMain : cSkin; ctx.fillRect(sideArm, bodyY + 8, 4, 6);
+                // 2. Adjust for Player "Sink" Lift (The player is drawn at y - lift)
+                screenY += lift; 
+
+                // 3. Screen Pixels -> Player Local
+                return { x: screenX / 1.3, y: screenY / 1.3 };
+            };
+
+            // === A. FRONT/BACK VIEW (Dual Oars) ===
+           if(dir === 0 || dir === 2) { 
+                // 1. Calculate Oar Handle Tips in Boat Space
+                let baseAng = 0.7; 
+                let gripDist = 5;
+
+                // Left Oar
+                let angL = Math.PI - baseAng + (oarSwing * 0.3);
+                let handleLx = -19 - (Math.cos(angL) * gripDist); 
+                let handleLy = -9 - (Math.sin(angL) * gripDist);
+
+                // Right Oar
+                let angR = baseAng - (oarSwing * 0.3);
+                let handleRx = 19 - (Math.cos(angR) * gripDist); 
+                let handleRy = -9 - (Math.sin(angR) * gripDist);
+
+                // 2. Convert to Player Space
+                let pL = getGripPoint(handleLx, handleLy);
+                let pR = getGripPoint(handleRx, handleRy);
+
+                // 3. Define Shoulders
+                let sLy = bodyY + 4; 
+                let sRy = bodyY + 4; 
+                let sLx = -9; 
+                let sRx = 9;
+
+                // --- DRAW LEFT ARM (Subtle Bend) ---
+                ctx.save();
+                let dx = pL.x - sLx; let dy = pL.y - sLy;
+                let dist = Math.hypot(dx, dy);
+                let rot = Math.atan2(dy, dx);
+                
+                ctx.translate(sLx, sLy);
+                ctx.rotate(rot - Math.PI/2);
+                
+                // FIXED: Reduced multiplier from 0.6 to 0.25 for a softer look
+                let bend = Math.max(0, (24 - dist) * 0.25); 
+                
+                ctx.strokeStyle = (cls==='warrior') ? cMain : cSec; 
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                // Negative X bends "Left" (Outward for left arm)
+                ctx.quadraticCurveTo(-bend, dist/2, 0, dist); 
+                ctx.stroke();
+
+                ctx.fillStyle = cSkin; 
+                ctx.fillRect(-2.5, dist - 2, 5, 5); 
+                ctx.restore();
+
+                // --- DRAW RIGHT ARM (Subtle Bend) ---
+                ctx.save();
+                dx = pR.x - sRx; dy = pR.y - sRy;
+                dist = Math.hypot(dx, dy);
+                rot = Math.atan2(dy, dx);
+                
+                ctx.translate(sRx, sRy);
+                ctx.rotate(rot - Math.PI/2);
+                
+                // FIXED: Reduced multiplier here too
+                bend = Math.max(0, (24 - dist) * 0.25);
+
+                ctx.strokeStyle = (cls==='warrior') ? cMain : cSec; 
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                // Positive X bends "Right" (Outward for right arm)
+                ctx.quadraticCurveTo(bend, dist/2, 0, dist); 
+                ctx.stroke();
+                
+                ctx.fillStyle = cSkin; 
+                ctx.fillRect(-2.5, dist - 2, 5, 5); 
+                ctx.restore();
+            }
+            
+           // === B. SIDE VIEW (JUST A SIMPLE ARM) ===
+            // === B. SIDE VIEW (PHYSICS-BASED IK) ===
+            else { 
+               // 1. REPLICATE OAR MATH
+                let baseAngle = 0.55; 
+                let angle = baseAngle + (oarSwing * 0.5) + 0.1; 
+                
+                // 2. DEFINE GRIP POINT
+                // -4.0 places hand on the lower shaft (as requested)
+                let gripLen = -4.0;
+
+                let boatHandleX = -4 - (Math.cos(angle) * gripLen);
+                let boatHandleY = -6 - (Math.sin(angle) * gripLen);
+
+                // 3. TRANSFORM TO PLAYER SPACE
+                let targetX = (boatHandleX * 1.6) / 1.3;
+                let targetY = ((boatHandleY + boatBob) * 1.6 + 3 + lift) / 1.3;
+
+                // 4. SHOULDER POSITION
+                let shoulderY = bodyY + 4;
+                let shoulderX = 0; 
+
+                // 5. DRAW ARM (Distance-Based Bend)
+                let dx = targetX - shoulderX;
+                let dy = targetY - shoulderY;
+                let dist = Math.hypot(dx, dy);
+
+                // IK LOGIC:
+                // Instead of guessing the wave, we calculate bend based on extension.
+                // If the arm extends (dist increases), bend decreases.
+                // If the arm retracts (dist decreases), bend increases.
+                // Formula: (MaxArmLength - CurrentDistance) * Sharpness
+                let bend = Math.max(0, (26 - dist) * 0.8);
+
+                ctx.save();
+                ctx.translate(shoulderX, shoulderY); 
+                
+                // Rotate canvas to point from Shoulder -> Hand
+                ctx.rotate(Math.atan2(dy, dx));
+
+                ctx.strokeStyle = (cls==='warrior') ? cMain : cSec; 
+                ctx.lineWidth = 4;
+                ctx.lineCap = 'round';
+                
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                
+                // Draw Arm Curve
+                ctx.quadraticCurveTo(dist / 2, bend, dist, 0);
+                ctx.stroke();
+
+                // 6. DRAW HAND
+                // Rotate hand slightly to grip the oar naturally
+                // We subtract the arm angle to reset, then add the oar angle
+                ctx.translate(dist, 0);
+                ctx.rotate(-Math.atan2(dy, dx) + (angle + 1.5)); // +1.5 aligns hand perpendicular to oar
+                
+                ctx.fillStyle = cSkin; 
+                ctx.fillRect(-2.5, -2.5, 5, 5);
+                
+                ctx.restore();
+            }
         }
+        
+        // --- C. STANDARD WALKING ---
+        else {
+            let armS = (dir===2 && isMoving && !S.p.isRiding) ? -walk : 0;
+            let sideArm = (S.p.isRiding) ? 2 : (walk*3); 
+            if(dir === 0 || dir === 2) { 
+                ctx.fillStyle = (cls==='warrior') ? cMain : cSec; ctx.fillRect(-14, bodyY, 5, 5); ctx.fillRect(9, bodyY, 5, 5);
+                ctx.fillStyle = (cls==='warrior') ? cDark : cMain; ctx.fillRect(-13, bodyY+3+armS, 4, 2); ctx.fillRect(9, bodyY+3-armS, 4, 2);
+                ctx.fillStyle = (cls==='warrior') ? cMain : cSkin; ctx.fillRect(-13, bodyY + 5 + armS, 4, 7); ctx.fillRect(9, bodyY + 5 - armS, 4, 7);
+                ctx.fillStyle = (cls==='mage') ? cSkin : cDark; ctx.fillRect(-13, bodyY + 10 + armS, 4, 3); ctx.fillRect(9, bodyY + 10 - armS, 4, 3);
+            } else { 
+                ctx.fillStyle = (cls==='warrior') ? cMain : cSec; ctx.fillRect(sideArm, bodyY + 2, 4, 6);
+                ctx.fillStyle = (cls==='warrior') ? cMain : cSkin; ctx.fillRect(sideArm, bodyY + 8, 4, 6);
+            }
+        }
+
+
+
+
 
         // 5. CARRY ITEM
         if (S.carry && S.carry.icon) {

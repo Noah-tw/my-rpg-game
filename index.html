@@ -71,8 +71,8 @@
     }
 
     #minimap-container { 
-        width: 180px; 
-        height: 180px;
+        width: 180px;  /* RESTORED */
+        height: 180px; /* RESTORED */
         margin-left: auto;
         
         /* BOTTOM LAYER: Original Semi-Transparent Black */
@@ -94,8 +94,8 @@
     /* MIDDLE LAYER (The Map Canvas) */
     #minimap {
         display: block;        
-        width: 180px;          
-        height: 180px;         
+        width: 150px;  /* CHANGED FROM 180px */
+        height: 150px; /* CHANGED FROM 180px */    
         
         border: none !important;      
         background: transparent !important; 
@@ -1684,6 +1684,15 @@ const AudioSys = {
         farm_day: "audio/Relaxing_Theme.mp3",
         farm_night: "audio/night_ambience.mp3",
         
+
+// --- NEW AMBIENCE ---
+        rain_loop: "audio/Rain Sound Effect.mp3",
+        ocean_loop: "audio/Ocean Sound of Waves.mp3",
+        fire_loop: "audio/Campfire Sound Effect.mp3",
+        row_boat: "audio/Row Boat Sound Effect.mp3",
+        // --------------------
+
+
         // --- SYSTEM / UI ---
         bag: "audio/bag_open.mp3",
         error: "audio/error.mp3",
@@ -1776,33 +1785,108 @@ const AudioSys = {
         sound.play().catch(e=>{});
     },
 
-    playBGM: function(key) {
-        if(this.currentBgmKey === key) return;
-        
-        // Stop old BGM
-        if(this.bgm) { 
-            this.bgm.pause(); 
-            this.bgm.currentTime = 0; // Reset
-            this.bgm = null; 
-        }
 
-        if(!this.cache[key]) return;
-        
-        // Use the cached object
-        this.bgm = this.cache[key];
-        this.bgm.loop = true;
-        this.bgm.volume = 0.3;
-        
-        // Try to play
-        let p = this.bgm.play();
-        if (p !== undefined) {
-            p.catch(error => {
-                // If blocked by browser policy, it will wait for the first click
-                console.log("BGM waiting for interaction...");
-            });
-        }
+
+
+
+
+
+
+   // --- BGM CROSS-FADE SYSTEM ---
+    fadeTimer: null, // Track the interval so we don't overlap fades
+
+    playBGM: function(key) {
+        if(this.currentBgmKey === key) return; // Already playing this track
+
+        // 1. Identify Tracks
+        let oldTrack = this.bgm; // The one currently playing
+        let newTrack = this.cache[key]; // The one we want to play
+
+        if(!newTrack) return;
+
+        // 2. Clear any pending fade to prevent fighting
+        if (this.fadeTimer) clearInterval(this.fadeTimer);
+
+        // 3. Prepare New Track (Silent Start)
+        newTrack.currentTime = 0;
+        newTrack.volume = 0; 
+        newTrack.loop = true;
+        newTrack.play().catch(e => console.log("Audio blocked"));
+
+        // 4. Update Reference
+        this.bgm = newTrack;
         this.currentBgmKey = key;
-    }, // <--- Note the comma here, it connects the next function
+
+        // 5. Start Cross-Fade Loop (Runs every 100ms)
+        let step = 0.05; // Fade speed
+        let maxVol = 0.3; // Target volume
+
+        this.fadeTimer = setInterval(() => {
+            let doneOut = false;
+            let doneIn = false;
+
+            // Fade OUT Old Track
+            if (oldTrack) {
+                if (oldTrack.volume > step) {
+                    oldTrack.volume -= step;
+                } else {
+                    oldTrack.volume = 0;
+                    oldTrack.pause();
+                    doneOut = true;
+                }
+            } else {
+                doneOut = true; // No old track to fade
+            }
+
+            // Fade IN New Track
+            if (newTrack.volume < maxVol - step) {
+                newTrack.volume += step;
+            } else {
+                newTrack.volume = maxVol;
+                doneIn = true;
+            }
+
+            // Clean up when both are finished
+            if (doneOut && doneIn) {
+                clearInterval(this.fadeTimer);
+                this.fadeTimer = null;
+            }
+        }, 100); // Update 10 times a second
+    },
+
+
+
+
+// --- AMBIENCE LAYER MANAGER ---
+    ambience: { rain: null, ocean: null, fire: null },
+
+    updateAmbience: function(isRain, isOcean, isFire) {
+        const check = (key, active, vol) => {
+            // 1. Load sound if missing
+            if (!this.ambience[key]) {
+                if (this.cache[key + '_loop']) {
+                    this.ambience[key] = this.cache[key + '_loop'].cloneNode();
+                    this.ambience[key].loop = true;
+                    this.ambience[key].volume = vol;
+                } else return;
+            }
+            // 2. Play or Pause based on 'active' flag
+            let s = this.ambience[key];
+            if (active) {
+                if (s.paused) s.play().catch(e => {});
+            } else {
+                if (!s.paused) { s.pause(); s.currentTime = 0; }
+            }
+        };
+
+        check('rain', isRain, 0.4);   // Rain Volume
+        check('ocean', isOcean, 0.3); // Ocean Volume
+        check('fire', isFire, 0.6);   // Fire Volume
+    },
+
+
+
+
 
     // --- MAC AUDIO WARM-UP FIX ---
     warmUp: function() {
@@ -1825,8 +1909,15 @@ const AudioSys = {
 
 
 const TILE = 50; 
-const MAP_S = 180; 
-document.getElementById('minimap').width = MAP_S; document.getElementById('minimap').height = MAP_S;
+const MAP_S = 300; // Logic Size: 300 (Keeps the Big Ocean working)
+
+// --- MINIMAP VISUAL FIX ---
+// Canvas Size: 200 (Forces the Island Art to fill the frame again)
+const miniCanvas = document.getElementById('minimap');
+miniCanvas.width = 150; 
+miniCanvas.height = 150;
+
+
 
 const T = { WATER:0, GRASS:1, FOREST:2, SAND:3, RUINS:4, SWAMP:5, SNOW:6, LAVA:7, VOID:8, ROAD:9, BRIDGE:10, LOCK:11, BEDROCK:12, BLOCK:13 };
 const C = { 
@@ -1874,7 +1965,8 @@ const SKILLS = {
     // --- RANGER ---
     // Scale 0.06 keeps the damage balanced (15 hits x low dmg)
 'Shoot':      { k:'Z', cd:500,  icon:'🏹', dmg:12, range:10, arrow:true, scale:0.06 },
-    'PoisonCloud': { k:'X', cd:6000, icon:'☠️', dmg:5, range:8, poison:200, type:'zone', scale:0.1 }, // Dmg is in the poison
+    // NERFED: Scale reduced 0.1 -> 0.04 to prevent OP DoT at high levels
+    'PoisonCloud': { k:'X', cd:6000, icon:'☠️', dmg:5, range:8, poison:200, type:'zone', scale:0.04 },
     'Trap':        { k:'C', cd:10000, icon:'🕸️', dmg:50, range:6, type:'web', stun:3000, scale:1.0 }, // Strong stun, Long CD
     'Rush':        { k:'V', cd:10000, icon:'👟', speed:true },
     'ArrowStorm':  { k:'B', cd:15000, icon:'🌧️', dmg:40, range:16, count:30, ult:true, type:'arrowRain', scale:0.5 },
@@ -2089,8 +2181,11 @@ function loadGame(slotId) {
         // C. Redraw Minimap (Fixes "Blank Map")
         drawStyledMinimap();
 
-        // 5. START THE GAME LOOP (Bypassing genMap!)
+       // 5. START THE GAME LOOP (Bypassing genMap!)
         document.getElementById('main-menu').style.display = 'none';
+        
+         // --- FORCE MUSIC RESTART ---
+        S.audio.currentBgmKey = null; // Forget 'Home' music
         
         // Play correct music
         let bgm = (S.world === 'farm') ? 'farm_day' : (S.bossDead ? 'adventure_new' : 'adventure');
@@ -2509,10 +2604,42 @@ function startNewGame(cls) {
     S.p.xp = 0; S.p.lvl = 1; S.p.killLog = []; S.p.actLog = {};
     S.p.cds = {}; S.p.buffs = {};
     
+
+
      S.unlockedRegion9 = false; 
     S.bossDead = false;
     S.epilogueSeen = false; // <--- ADD THIS LINE HERE
-    S.farm.generated = false;
+    // --- FIX: FULL FARM RESET ---
+    // Overwrite the dirty farm state with fresh default values
+    S.farm = {
+        day: 1, money: 5000, houseLevel: 1, fieldLevel: 1, gardenLevel: 1,
+        time: 360, water: 30, weather: 'sun',
+        generated: false, // Force map regeneration
+        tutorialStep: 0,
+        
+        plots: {}, debris: {}, fences: {}, structures: {}, letterData: {},
+        
+        inventory: { 
+            carrot_seeds: 5, wood: 0, stake: 0, fish: 0, brick: 0,
+            carrot: 0, potato: 0, corn: 0, tomato: 0,
+            rose: 0, sunflower: 0, tulip: 0, lavender: 0,
+            milk: 0, egg: 0, apple: 0, orange: 0,
+            letter_brick: 0, star: 0, teddy: 0, qbox: 0, coin: 0,
+            bal_r: 0, bal_y: 0, bal_b: 0
+        },
+        storage: {},
+        
+        // Reset Tools
+        tools: { hoe: 1, sickle: 1, axe: 1, hammer: 1, water: 1, rod: 1 },
+        toolNames: ['Hand','Hoe','Hammer','Axe','Sickle','Water','Rod',''], 
+        toolIcons: ['✋','⛏️','🔨','🪓','✂️','🚿','🎣',''],
+        keyMap:    ['1','2','3','4','Q','W','E','R'],
+        toolIndex: 0
+    };
+    // ----------------------------
+
+
+
 
     // Apply Class Stats
     Object.assign(S.p, CLASSES[cls]);
@@ -3031,13 +3158,31 @@ function addMob(name, x, y, boss=false) {
     if(boss) {
         dmg = 40; w=2; h=2;
         if(name==="Slime King") hp=1500; 
-        else if(name==="Chaos Titan") { hp=20000; dmg=70; w=4; h=4; } 
-        else hp=4000;
+        // BALANCED BOSSES
+        else if(name==="Chaos Titan") { hp=12500; dmg=70; w=4; h=4; } // Reduced from 20k
+        else hp=4000; // Other Bosses (Scorpion, Hydra, Dragon)
     } else {
+        // --- EARLY GAME (Weak) ---
         if(name==='Goblin') { hp=280; dmg=18; }
         if(name==='Ent') { hp=350; dmg=25; }
-        if(name==='Mosquito') { hp=120; dmg=20; }
-        if(['Magma','Fire Imp','Stone Golem','Cinder Wolf','Yeti','Ice Spirit'].includes(name)) { hp=650; dmg=35; }
+        if(name.includes('Slime')) { hp=250; dmg=15; }
+        if(name==='Scorpion' || name==='Mummy') { hp=400; dmg=25; }
+        if(name==='Skeleton' || name==='Bat') { hp=400; dmg=25; }
+
+        // --- MID GAME (Moderate) ---
+        if(name==='Mosquito') { hp=350; dmg=25; }
+        if(name==='Basilisk') { hp=550; dmg=30; }
+
+        // --- LATE GAME (Buffed to survive Player Lvl 8+) ---
+        
+        // Snow Region: ~4-5 hits to kill
+        if(name==='Yeti' || name==='Ice Spirit') { hp=900; dmg=40; }
+
+        // Lava Region: ~6-7 hits to kill
+        if(name==='Magma' || name==='Fire Imp') { hp=1300; dmg=50; }
+
+        // Void Region: ~8-9 hits to kill (Dangerous!)
+        if(name==='Stone Golem' || name==='Cinder Wolf') { hp=1800; dmg=60; }
     }
     S.ents.push({type:'mob', name, x, y, w, h, hp, maxHp:hp, dmg, boss, aggro:0, status:{}});
 }
@@ -3106,7 +3251,8 @@ function update() {
     // --- 1. WORLD SWITCHING LOGIC ---
 
     // Trigger Farm Mode earlier (at x=108)
-    let inFarmArea = (p.x > 108 && p.y > 118 && S.unlockedRegion9);
+    // FIX: Allow going North (y < 118) ONLY if we are deep in the East/Ocean (x > 160)
+    let inFarmArea = (p.x > 108 && S.unlockedRegion9 && (p.y > 118 || p.x > 160));
 
     if (inFarmArea) {
         // === ENTERING FARM ===
@@ -3119,33 +3265,25 @@ function update() {
             if(fs) fs.disabled = false; 
 
            updateUI();
-                   }
-   } else {
-            // === RETURNING TO MAIN WORLD ===
-            if(S.world === 'farm') {
-                S.world = 'main';
-
-                let fs = document.getElementById('farm-styles');
-                if(fs) fs.disabled = true; 
-                
-                // [FIX] STOP RESETTING THE WORLD
-                // We removed genMap(), so dead mobs stay dead and the map stays persistent.
-
-               
-
-
-
-// --- REDRAW STYLIZED MAP ---
-                drawStyledMinimap();
-                // ---------------------------
-
-                updateUI();
-                
-                
-                // Play NEW song if boss is dead, otherwise play OLD song
-                S.audio.playBGM(S.bossDead ? 'adventure_new' : 'adventure');
-            }
         }
+    } else {
+        // === RETURNING TO MAIN WORLD ===
+        if(S.world === 'farm') {
+            S.world = 'main';
+
+            let fs = document.getElementById('farm-styles');
+            if(fs) fs.disabled = true; 
+            
+            // --- REDRAW STYLIZED MAP ---
+            drawStyledMinimap();
+            // ---------------------------
+
+            updateUI();
+            
+            // Play NEW song if boss is dead, otherwise play OLD song
+            S.audio.playBGM(S.bossDead ? 'adventure_new' : 'adventure');
+        }
+    }
         
 
 
@@ -3499,14 +3637,20 @@ function update() {
             }
         }
 
-        if(e.type==='mob') {
+       if(e.type==='mob') {
             if(e.status.freeze > now && Math.random()<0.1) part(e.x, e.y, '#00e5ff', 1); 
             if(e.status.stun > now) return;
+            
+            // (Your Poison Logic is here)
             if(e.status.poison > 0) {
                 e.status.poison--;
-                if(now%20===0) hit(e, 5, {color:'#8e44ad'});
+                if(now%20===0) hit(e, 5, {color:'#8e44ad', scale: 0.3}); 
             }
-            if(e.status.burn > now && now%30===0) hit(e, 5, {color:'#e74c3c'});
+
+            // --- UPDATE THIS BURN LINE ---
+            // Changed from 'now%30===0' to 'Math.random() < 0.03'
+            // This makes it trigger randomly (approx 3% chance per frame)
+            if(e.status.burn > now && Math.random() < 0.03) hit(e, 5, {color:'#e74c3c'});
 
             let speedMod = 1;
             if(e.status.slow > now) speedMod = 0.3; 
@@ -3573,7 +3717,10 @@ popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true);
                      if(m.x < e.x + e.w && m.x + (m.w||1) > e.x &&
                         m.y < e.y + e.h && m.y + (m.h||1) > e.y) {
                          m.status.poison = e.poison;
-                         if(now % 200 < 20) hit(m, 5, {color:'#8e44ad'});
+                         
+                         // --- UPDATE THIS LINE ---
+                         if(now % 200 < 20) hit(m, 5, {color:'#8e44ad', scale: 0.3}); 
+                         // ------------------------
                      }
                  }
              });
@@ -7504,6 +7651,12 @@ function drawMob(x, y, m) {
         let breath = Math.sin(t / 300) * 1.5;
         let glow = 0.5 + Math.abs(Math.sin(t / 500)) * 0.5; // Pulsing light
 
+
+
+// --- NEW: COLOR LOGIC ---
+        // If tint exists (Poison/Freeze), use it. Else use Dark Blue-Grey.
+        let armorColor = tint || '#37474f'; 
+
         // 1. LIVING CAPE (Smoke & Fire)
         // Drawn first so it is behind him
         ctx.save();
@@ -7552,12 +7705,12 @@ function drawMob(x, y, m) {
         ctx.fillStyle = '#ffd700'; ctx.beginPath(); ctx.arc(0, 38, 4, 0, 6.28); ctx.fill(); // Pommel
         ctx.restore();
 
-        // 3. LEGS (Heavy Plate Armor)
+       // 3. LEGS (Heavy Plate Armor)
         // Dark Blue-Grey to contrast floor
-        let armorColor = '#37474f'; 
+        // (armorColor is now defined at the top of the function)
         let trimColor = '#ffd700'; // Gold Trim
 
-        ctx.fillStyle = armorColor;
+        ctx.fillStyle = armorColor; // Uses the dynamic color
         // Left Leg
         ctx.fillRect(x+10, y+35-b, 12, 15);
         // Right Leg
@@ -7620,7 +7773,7 @@ function drawMob(x, y, m) {
 
         // 9. HELMET (Dark Lord Style)
         let headY = y - 2 - b + breath;
-        ctx.fillStyle = '#212121'; // Dark metal
+        ctx.fillStyle = armorColor; // <--- CHANGED to use dynamic color
         ctx.fillRect(x+20, headY, 17, 16);
         
         // Crown Spikes
@@ -8137,8 +8290,19 @@ function drawMob(x, y, m) {
 
 
 
-    // REPLACES THE RED DRAGON BLOCK
+   // REPLACES THE RED DRAGON BLOCK
     else if(m.name.includes('Dragon')) {
+        // --- 1. DYNAMIC FACE DIRECTION ---
+        // If Player X > Dragon X, Face Right (1). Else Face Left (-1).
+        let faceDir = (S.p.x > m.x) ? 1 : -1;
+
+        ctx.save(); // Start Flip Group
+        
+        // Pivot around the center of the sprite (x+25)
+        ctx.translate(x+25, y+25); 
+        ctx.scale(faceDir, 1); 
+        ctx.translate(-(x+25), -(y+25)); 
+
         // Animation: Flapping wings
         let flap = Math.sin(Date.now() / 150) * 5;
 
@@ -8207,6 +8371,8 @@ function drawMob(x, y, m) {
         // Eye (Glowing Yellow)
         ctx.fillStyle = '#ffeb3b';
         ctx.fillRect(x+35, y+3-b, 4, 4);
+
+        ctx.restore(); // End Flip Group
     }
 
 
@@ -8519,6 +8685,16 @@ if(n.name === "Shummi") {
        // 6. HEAD & HAIR
         ctx.fillStyle = '#ffe0b2'; ctx.fillRect(-3, -7, 6, 5); // Face
         
+
+// --- ADDED BLUE EYES ---
+        ctx.fillStyle = '#1e88e5'; 
+        ctx.fillRect(-2, -5, 1, 1); 
+        ctx.fillRect(1, -5, 1, 1);
+        // -----------------------
+
+
+
+
         // Features
         ctx.fillStyle = '#d84315'; ctx.fillRect(-1, -3, 2, 1); // Smile (Lowered 1px)
         ctx.fillStyle = '#ffccbc'; ctx.fillRect(-3, -5, 1, 1); ctx.fillRect(2, -5, 1, 1); // Cheeks
@@ -11269,8 +11445,10 @@ function triggerGameOver(killerName) {
 function returnToMenu() {
     S.audio.play('esc'); 
     
-    // --- STOP MUSIC ---
-    if(S.audio.bgm) { S.audio.bgm.pause(); S.audio.bgm = null; S.audio.currentBgmKey = null; }
+   // --- FORCE HOME MUSIC ---
+    S.audio.currentBgmKey = null; // Forget current song
+    S.audio.playBGM('home');      // Start Home theme (will rewind due to Step 1)
+
 
     // 1. Hide Death Screen and Game UI
     document.getElementById('death-screen').style.display = 'none';
@@ -11586,7 +11764,10 @@ function drawPortrait(canvasId, name) {
             ctx.fillStyle = "rgba(141, 110, 99, 0.3)"; ctx.beginPath(); ctx.ellipse(ex, ey - 2, 7, 4, Math.PI, 0, Math.PI); ctx.fill();
             ctx.fillStyle = "rgba(210, 190, 180, 0.15)"; ctx.beginPath(); ctx.arc(ex, ey, 8, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = "#fdfdfe"; ctx.beginPath(); ctx.ellipse(ex, ey, 5.5, 3, 0, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = "#546e7a"; ctx.beginPath(); ctx.arc(ex, ey, 2.5, 0, Math.PI*2); ctx.fill();
+
+
+            // --- CHANGED TO BLUE IRIS ---
+            ctx.fillStyle = "#1e88e5"; ctx.beginPath(); ctx.arc(ex, ey, 2.5, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = "#1a1a1a"; ctx.beginPath(); ctx.arc(ex, ey, 1.2, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(ex - 1, ey - 1, 0.8, 0, Math.PI*2); ctx.fill();
             ctx.strokeStyle = "#263238"; ctx.lineWidth = 1.5; ctx.lineCap = "round";
