@@ -241,6 +241,17 @@ const Region9Farm = (function() {
         };
         S.farm.inventory = { ...farmItems, ...S.farm.inventory };
 
+
+
+
+
+// [THE MEAT] --- PASTE THIS NEW LINE HERE ---
+        // Reset the joke counter so you can see it again if you refresh
+        S.farm.fishSpam = 0; 
+
+
+
+
         // [FIX] ONLY GENERATE MAP ONCE
         // If we don't check this, every time you enter, it spawns more trees on top of old ones.
         if (!S.farm.generated) {
@@ -381,12 +392,17 @@ const Region9Farm = (function() {
                     flex-direction: column; 
                     align-items: center; 
                 }
+
+
+
+
+               /* [THE MEAT] --- PASTE THIS (New Font & Size) --- */
                 #chat-name { 
-                    color: #ffd700; /* Gold */
-                    font-family: 'Courier New', monospace; 
+                    color: #ffd700; 
+                    font-family: Verdana, sans-serif; /* <--- CLEANER FONT */
                     font-weight: bold; 
-                    font-size: 14px; 
-                    margin-bottom: 5px; 
+                    font-size: 20px; 
+                    margin-bottom: 8px; 
                     text-transform: uppercase; 
                     text-shadow: 1px 1px 0 #000;
                     border-bottom: 1px dashed #6d4c41;
@@ -395,12 +411,19 @@ const Region9Farm = (function() {
                     padding-bottom: 5px;
                 }
                 #chat-text { 
-                    color: #fff3e0; /* Parchment White */
-                    font-family: 'Courier New', monospace; 
-                    font-size: 16px; 
+                    color: #fff3e0; 
+                    font-family: Verdana, sans-serif; /* <--- CLEANER FONT */
+                    font-weight: bold; /* Make the joke easier to read */
+                    font-size: 24px; 
                     line-height: 1.4; 
                     text-align: center;
-                    text-shadow: 1px 1px 0 #000;
+                    text-shadow: 2px 2px 0 #000;
+                }
+
+
+
+
+
                 }
             `;
 
@@ -1428,6 +1451,11 @@ function updateTutorial() {
         
 	updateChickens();
         updateCows(); // <--- IF THIS IS MISSING, COWS ARE STATUES
+
+
+
+
+
 	updatePets(); // <--- Add this line
 	updateHorses(); // <--- ADD THIS LINE HERE
 
@@ -1826,6 +1854,13 @@ let frontY = p.y + 0.5 + (dy / p.spd * 0.75);
 
                         // If it is WATER (0), check if we are in the "Shallow Zone"
                         if (t === 0) {
+                            
+                            // [FIX] VOID PROTECTION: 
+                            // Only allow wading if we are actually at the Beach (Right side).
+                            // This prevents walking on the "Water/Void" tiles near the Bridge (x=109-120)
+                            // and prevents walking into the deep River (x=140-150).
+                            if (nx < 160) return false; 
+
                             // 1. Calculate the exact Shore Line (The Formula)
                             let normY = (ny - 120) / 40;
                             if (normY < 0) normY = 0; if (normY > 1) normY = 1;
@@ -1836,11 +1871,7 @@ let frontY = p.y + 0.5 + (dy / p.spd * 0.75);
                             // We use 2.8 to ensure the player can fully occupy the 2nd water tile.
                             if (nx < shoreX + 2.8) {
                                 
-
-
-
                                 // 3. Safety Check: No walking through objects in water
-                               // 3. Safety Check: No walking through objects in water
                                 let k = `${mx},${my}`;
                                 if (S.farm.fences[k] || S.farm.debris[k] || S.farm.structures[k]) return false;
                                 
@@ -1851,12 +1882,9 @@ let frontY = p.y + 0.5 + (dy / p.spd * 0.75);
                                         let px = S.p.x + 0.5, py = S.p.y + 0.5;
                                         if (px >= e.x && px < e.x + e.w && py >= e.y && py < e.y + e.h) continue;
                                     }
-                                    // --------------------------------------
-
+                                    
                                     if (nx >= e.x && nx < e.x + e.w && ny >= e.y && ny < e.y + e.h) return false;
                                 }
-                                
-                                // All clear! We are knee-deep in water.
                                 
                                 // All clear! We are knee-deep in water.
                                 return true; 
@@ -2015,7 +2043,16 @@ let frontY = p.y + 0.5 + (dy / p.spd * 0.75);
         if (S.audio.updateAmbience) {
             let isRain = (S.farm.weather === 'rain');
             let isOcean = (S.p.x > 160);
-            let isFire = S.ents.some(e => e.kind === 'campfire' && e.lit);
+
+
+
+
+           // [FIX] DISTANCE CHECK: Only hear fire if within 15 tiles
+            let isFire = S.ents.some(e => 
+                e.kind === 'campfire' && 
+                e.lit && 
+                Math.hypot(e.x - S.p.x, e.y - S.p.y) < 15
+            );
 
             S.audio.updateAmbience(isRain, isOcean, isFire);
         }
@@ -2944,23 +2981,52 @@ if (fire) {
                     }
                 }
             }
+
+
+
+
             
-            // --- 6. ROD LOGIC ---
-            else if(toolName === 'Rod') {
-                if(tile === T.WATER) {
-                    S.audio.play('fishing'); // AUDIO
-                    part(gx, gy, '#00b0ff', 5);
-                    setTimeout(() => {
-                        if(Math.random() < 0.4) { 
-                            S.farm.inventory.fish++; 
-                            S.audio.play('item_found'); // <--- ADDED SOUND
-                            popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
-                            updateFarmUI(); 
-                        } 
-                        else popText(S.p.x, S.p.y, "...", "#aaa", false, true);
-                    }, 800);
-                }
+            // [THE MEAT] --- PASTE THIS NEW CODE HERE (Replacing the old Rod Logic) ---
+        // [THE MEAT] --- PASTE THIS (Trigger at 10) ---
+        // --- 6. ROD LOGIC (The "Shortcut" Edition) ---
+        else if(toolName === 'Rod') {
+            if(tile === T.WATER) {
+                S.audio.play('fishing'); 
+                part(gx, gy, '#00b0ff', 5);
+                
+                setTimeout(() => {
+                    if(Math.random() < 0.4) { 
+                        S.farm.inventory.fish++; 
+                        S.audio.play('item_found'); 
+                        
+                        // --- THE JOKE LOGIC ---
+                        S.farm.fishSpam = (S.farm.fishSpam || 0) + 1;
+
+
+
+
+
+                  // [THE MEAT] --- PASTE THIS (Changed 8000 -> 4000) ---
+                            // TRIGGER AT 10
+                            if (S.farm.fishSpam === 10) {
+                                // 4000 = 4 Seconds. The perfect amount of time.
+                                showChat("SECRET UNLOCKED 🤪", "Oops, you found the shortcut to get rich!", 4000);
+                                popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
+                            } 
+                            // All other times: Just show normal fish
+                            else {
+                                popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
+                            }
+
+// [BOTTOM BUN] --- Ensure this is below ---
+                        updateFarmUI(); 
+                    } 
+                    else {
+                        popText(S.p.x, S.p.y, "...", "#aaa", false, true);
+                    }
+                }, 800); 
             }
+        }
 
             // --- 7. FALLBACK HINTS ---
             // --- 7. FALLBACK HINTS ---
@@ -9324,20 +9390,46 @@ function addEnt(type, kind, x, y) {
         if(small) d.style.fontSize = "20px";
         document.body.appendChild(d); setTimeout(()=>d.remove(), 800);
     }
-    function part(x, y, c, n, s=3) {
+
+
+
+
+   function part(x, y, c, n, s=3) {
         for(let i=0; i<n; i++) S.parts.push({
             x:x+(Math.random()-.5), y:y+(Math.random()-.5), 
             vx:(Math.random()-.5)*0.1, vy:(Math.random()-.5)*0.1, 
-            c, life:20+Math.random()*10, s
+            c, life:20+Math.random()*10, s,
+            type: 'norm' // <--- THIS PREVENTS THE CRASH
         });
     }
-    function showChat(name, txt) {
+
+
+
+
+// [THE MEAT] --- PASTE THIS HERE (Replacing the old showChat) ---
+    // --- UPDATED CHAT HELPER (Now respects duration!) ---
+    function showChat(name, txt, duration) {
+        // If no duration is given, default to 3000ms (3 seconds)
+        if (!duration) duration = 3000;
+
         const c = document.getElementById('rpg-chat');
+        if (!c) return;
+
         document.getElementById('chat-name').innerText = name;
         document.getElementById('chat-text').innerText = txt;
+        
         c.style.opacity = 1;
-        setTimeout(() => c.style.opacity = 0, 2000);
+
+        // 1. Clear any existing timer so it doesn't close early
+        if (c.hideTimer) clearTimeout(c.hideTimer);
+        
+        // 2. Set new timer using the duration we passed (e.g., 8000)
+        c.hideTimer = setTimeout(() => {
+            c.style.opacity = 0;
+        }, duration);
     }
+
+
 
 // --- FIELD EXPANSION LOGIC ---
   function isFarmable(x, y) {

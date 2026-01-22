@@ -1686,10 +1686,10 @@ const AudioSys = {
         
 
 // --- NEW AMBIENCE ---
-        rain_loop: "audio/Rain Sound Effect.mp3",
-        ocean_loop: "audio/Ocean Sound of Waves.mp3",
-        fire_loop: "audio/Campfire Sound Effect.mp3",
-        row_boat: "audio/Row Boat Sound Effect.mp3",
+        rain_loop: "audio/Rain_Sound_Effect.mp3",
+        ocean_loop: "audio/Ocean_Sound_of_Waves.mp3",
+        fire_loop: "audio/Campfire_Sound_Effect.mp3",
+        row_boat: "audio/Row_Boat_Sound_Effect.mp3",
         // --------------------
 
 
@@ -1928,8 +1928,8 @@ const C = {
 };
 
 const CLASSES = {
-    // WARRIOR: Tanky (HP 500), Heavy (Speed 0.12)
-    warrior: { hp:500, spd:0.12, color:'#2196f3', skills:['Slash','Bash','War Stomp','Rally','Quake', 'Tornado'] },
+    // FIX: HP 500 -> 750 (To survive melee combat)
+warrior: { hp:750, spd:0.12, color:'#2196f3', skills:['Slash','Bash','War Stomp','Rally','Quake', 'Tornado'] },
     // MAGE: Fragile (HP 280), Kiter (Speed 0.13)
     mage:    { hp:280, spd:0.13, color:'#9c27b0', skills:['Inferno','Glacial Spike','Thunderstorm','Heal','AbyssalGrasp', 'Starfall'] },
     // ROGUE: Fast (Speed 0.15), Evasive
@@ -1938,10 +1938,16 @@ const CLASSES = {
 
 const SKILLS = {
     // --- WARRIOR ---
-    'Slash':     { k:'Z', cd:400,  icon:'⚔️', dmg:30, range:3.5, vfx:'slash', scale:1.0 }, // Standard Hit
-    'Bash':      { k:'X', cd:4000, icon:'🛡️', dmg:80, range:3, stun:2000, knock:4.0, vfx:'bash', scale:1.5 }, // Strong Single Hit
-    'War Stomp': { k:'C', cd:5000, icon:'☢️', dmg:120, range:5.0, knock:3.0, stomp:true, scale:1.2 }, // Reduced Range/Knock
-    'Rally':     { k:'V', cd:12000, icon:'❤️', heal:200 },
+   // FIX: Slash Range 3.5 -> 5.0 (Hit enemies before they hit you)
+'Slash':     { k:'Z', cd:400,  icon:'⚔️', dmg:35, range:5.0, vfx:'slash', scale:1.0 }, 
+
+// FIX: Bash CD 4s -> 2.5s (Stun more often)
+'Bash':      { k:'X', cd:2500, icon:'🛡️', dmg:80, range:4, stun:2000, knock:4.0, vfx:'bash', scale:1.5 }, 
+
+'War Stomp': { k:'C', cd:5000, icon:'☢️', dmg:120, range:5.0, knock:3.0, stomp:true, scale:1.2 }, 
+
+// FIX: Rally CD 12s -> 8s, Heal 200 -> 300 (Stay alive!)
+'Rally':     { k:'V', cd:8000, icon:'❤️', heal:300 },
     'Quake':     { k:'B', cd:15000, icon:'🌋', dmg:220, range:10, stun:3000, ult:true, quake:true, scale:2.0 },
    // WARRIOR N: TORNADO (Buffed: 15 -> 28)
     // Strong enough to wipe a wave of mobs, but won't instant-kill a boss.
@@ -1965,11 +1971,16 @@ const SKILLS = {
     // --- RANGER ---
     // Scale 0.06 keeps the damage balanced (15 hits x low dmg)
 'Shoot':      { k:'Z', cd:500,  icon:'🏹', dmg:12, range:10, arrow:true, scale:0.06 },
-    // NERFED: Scale reduced 0.1 -> 0.04 to prevent OP DoT at high levels
-    'PoisonCloud': { k:'X', cd:6000, icon:'☠️', dmg:5, range:8, poison:200, type:'zone', scale:0.04 },
-    'Trap':        { k:'C', cd:10000, icon:'🕸️', dmg:50, range:6, type:'web', stun:3000, scale:1.0 }, // Strong stun, Long CD
-    'Rush':        { k:'V', cd:10000, icon:'👟', speed:true },
-    'ArrowStorm':  { k:'B', cd:15000, icon:'🌧️', dmg:40, range:16, count:30, ult:true, type:'arrowRain', scale:0.5 },
+    // FIX: Base 10 dmg (Stronger). We will apply 4x Multiplier for Bosses in code.
+'PoisonCloud': { k:'X', cd:6000,  icon:'☠️', dmg:10, range:8, poison:200, type:'zone', scale:0.23 },
+
+// Buffed Trap CD (10s -> 6s)
+'Trap':        { k:'C', cd:6000,  icon:'🕸️', dmg:50, range:6, type:'web', stun:3000, scale:1.0 },
+
+'Rush':        { k:'V', cd:10000, icon:'👟', speed:true },
+
+// Buffed Ult Damage (40 -> 65)
+'ArrowStorm':  { k:'B', cd:15000, icon:'🌧️', dmg:65, range:16, count:30, ult:true, type:'arrowRain', scale:0.5 },
     'FairyBombs':  { k:'N', cd:5000, icon:'🧚', dmg:35, range:12, locked:true, type:'fairy', scale:0.3 }
 };
 
@@ -3153,39 +3164,45 @@ function addEnt(type, kind, x, y, w, h) {
 
 
 function addMob(name, x, y, boss=false) {
-    let hp = 250, dmg = 15; 
+    // 1. BASE STATS (Buffed: 250 -> 600)
+    let hp = 600, dmg = 15; 
     let w=1, h=1;
+
     if(boss) {
-        dmg = 40; w=2; h=2;
-        if(name==="Slime King") hp=1500; 
-        // BALANCED BOSSES
-        else if(name==="Chaos Titan") { hp=12500; dmg=70; w=4; h=4; } // Reduced from 20k
-        else hp=4000; // Other Bosses (Scorpion, Hydra, Dragon)
+        dmg = 45; w=2; h=2;
+        // --- BOSS BUFFS ---
+        if(name==="Slime King") hp=3500;  // Was 1500
+      // --- MEAT (The Chaos Titan Adjustment) ---
+        // REDUCED HP: 25,000 -> 18,000 (Fairer for nerfed classes)
+        else if(name==="Chaos Titan") { hp=18000; dmg=80; w=4; h=4; } 
+        // OTHER BOSSES (Scorpion, Hydra, Dragon): 4k -> 9k
+        else hp=9000; 
     } else {
-        // --- EARLY GAME (Weak) ---
-        if(name==='Goblin') { hp=280; dmg=18; }
-        if(name==='Ent') { hp=350; dmg=25; }
-        if(name.includes('Slime')) { hp=250; dmg=15; }
-        if(name==='Scorpion' || name==='Mummy') { hp=400; dmg=25; }
-        if(name==='Skeleton' || name==='Bat') { hp=400; dmg=25; }
-
-        // --- MID GAME (Moderate) ---
-        if(name==='Mosquito') { hp=350; dmg=25; }
-        if(name==='Basilisk') { hp=550; dmg=30; }
-
-        // --- LATE GAME (Buffed to survive Player Lvl 8+) ---
+        // --- EARLY GAME (Grass, Forest) ---
+        // Was 280 -> Now 600-700
+        if(name==='Goblin') { hp=600; dmg=20; }
+        if(name==='Ent') { hp=800; dmg=30; }
+        if(name.includes('Slime')) { hp=600; dmg=18; }
         
-        // Snow Region: ~4-5 hits to kill
-        if(name==='Yeti' || name==='Ice Spirit') { hp=900; dmg=40; }
+        // --- MID GAME (Sand, Ruins, Swamp) ---
+        // Was 400 -> Now 1000-1500
+        if(name==='Scorpion' || name==='Mummy') { hp=1000; dmg=30; }
+        if(name==='Skeleton' || name==='Bat') { hp=1000; dmg=30; }
+        if(name==='Mosquito') { hp=800; dmg=25; }
+        if(name==='Basilisk') { hp=1600; dmg=35; } // Tanky lizard
 
-        // Lava Region: ~6-7 hits to kill
-        if(name==='Magma' || name==='Fire Imp') { hp=1300; dmg=50; }
+        // --- LATE GAME (Snow, Lava) ---
+        // Was 900 -> Now 2200-2800 (Needs to survive Level 8+ burst)
+        if(name==='Yeti' || name==='Ice Spirit') { hp=2400; dmg=45; }
+        if(name==='Magma' || name==='Fire Imp') { hp=2800; dmg=55; }
 
-        // Void Region: ~8-9 hits to kill (Dangerous!)
-        if(name==='Stone Golem' || name==='Cinder Wolf') { hp=1800; dmg=60; }
+        // --- END GAME (Void) ---
+        // Was 1800 -> Now 4000 (Takes serious effort to kill)
+        if(name==='Stone Golem' || name==='Cinder Wolf') { hp=4000; dmg=70; }
     }
+    
     S.ents.push({type:'mob', name, x, y, w, h, hp, maxHp:hp, dmg, boss, aggro:0, status:{}});
-}
+}    
 
 
 
@@ -3276,6 +3293,50 @@ function update() {
             
             // --- REDRAW STYLIZED MAP ---
             drawStyledMinimap();
+
+
+
+
+
+
+
+
+
+
+// === AUTO-PARK HORSE (Dynamic Position) ===
+            if (S.p.isRiding) {
+                S.p.isRiding = false;
+                
+                // We park the horse at the fixed "Farm Gate" coordinates (121, 135).
+                // This guarantees it lands on the flat road, not the void or slope.
+                S.ents.push({
+                    type: 'horse', 
+                    kind: 'horse', 
+                    x: 121,         // Safe spot inside the gate
+                    y: 135,         // Safe top-middle lane
+                    w: 1.2, 
+                    h: 1.2,
+                    walkTimer: 0
+                });
+
+                // 2. Reset Player Speed (Remove Horse Speed)
+                if (S.p.class === 'rogue') S.p.spd = 0.15;
+                else if (S.p.class === 'warrior') S.p.spd = 0.12;
+                else S.p.spd = 0.13; // Mage
+
+                // 3. Notify Player
+                popText(S.p.x, S.p.y, "Horse Parked", "#d7ccc8");
+            }
+            // ==========================================
+
+
+
+
+
+
+
+
+
             // ---------------------------
 
             updateUI();
@@ -3483,10 +3544,21 @@ function update() {
                 
                 S.audio.play('yaka_hit'); // <--- PLAY IMPACT SOUND
                 
-                // Deal Damage
-                
-                // Deal Damage
-                hit(target, e.dmg, { scale: e.scale, color:'#ff1744' });
+
+
+
+                // FIX: "Giant Slayer" - Deal 3x Damage if it hits a Boss!
+            // Mobs take 12 dmg. Bosses take 36 dmg.
+            let finalDmg = target.boss ? e.dmg * 3 : e.dmg;
+            
+            // Visual Crit Effect for Bosses
+            if(target.boss) part(e.x, e.y, '#ffd700', 10, 4); 
+
+            hit(target, finalDmg, { scale: e.scale, color:'#ff1744' });
+
+
+
+
                 part(e.x, e.y, '#ff1744', 5, 2); 
                 S.shake = 2;
 
@@ -3637,20 +3709,66 @@ function update() {
             }
         }
 
-       if(e.type==='mob') {
+        if(e.type==='mob') {
             if(e.status.freeze > now && Math.random()<0.1) part(e.x, e.y, '#00e5ff', 1); 
             if(e.status.stun > now) return;
+
+
+
+
+
+           // --- FIX: RELIABLE BURNING & POISON ---
             
-            // (Your Poison Logic is here)
-            if(e.status.poison > 0) {
-                e.status.poison--;
-                if(now%20===0) hit(e, 5, {color:'#8e44ad', scale: 0.3}); 
+            // 1. BURN LOGIC
+            if(e.status.burn > now) {
+                // Create a counter if it doesn't exist
+                if(!e.burnTimer) e.burnTimer = 0;
+                e.burnTimer++;
+                
+
+
+
+                // Tick every 20 frames (approx 3 times a second)
+            if(e.burnTimer > 20) {
+
+
+
+                // FIX: Base 8 damage + 25% Scaling (Stronger burn)
+                hit(e, 8, {color:'#e74c3c', scale: 0.25});
+                e.burnTimer = 0;
             }
 
-            // --- UPDATE THIS BURN LINE ---
-            // Changed from 'now%30===0' to 'Math.random() < 0.03'
-            // This makes it trigger randomly (approx 3% chance per frame)
-            if(e.status.burn > now && Math.random() < 0.03) hit(e, 5, {color:'#e74c3c'});
+
+
+
+            }
+
+            // 2. POISON LOGIC
+            if(e.status.poison > 0) {
+                e.status.poison--; // Reduces duration
+                
+                if(!e.poisonTimer) e.poisonTimer = 0;
+                e.poisonTimer++;
+
+
+
+// Standard Speed (20 frames) for everyone. Simple and Clean.
+            if(e.poisonTimer > 20) {
+                // FIX: 4x Damage to Bosses (Melts them!)
+                // Mob = 10 dmg. Boss = 40 dmg.
+                let pDmg = e.boss ? 58 : 10; 
+                hit(e, pDmg, {color:'#8e44ad', scale: 0.15});
+                e.poisonTimer = 0;
+            }
+
+
+
+
+            }
+
+
+
+
 
             let speedMod = 1;
             if(e.status.slow > now) speedMod = 0.3; 
@@ -3717,10 +3835,12 @@ popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true);
                      if(m.x < e.x + e.w && m.x + (m.w||1) > e.x &&
                         m.y < e.y + e.h && m.y + (m.h||1) > e.y) {
                          m.status.poison = e.poison;
-                         
-                         // --- UPDATE THIS LINE ---
-                         if(now % 200 < 20) hit(m, 5, {color:'#8e44ad', scale: 0.3}); 
-                         // ------------------------
+
+
+
+                         // --- MEAT (Replace only this line) ---
+                         // scale: 0.05 ensures the cloud area damage isn't OP
+                         if(now % 200 < 20) hit(m, 5, {color:'#8e44ad', scale: 0.07});
                      }
                  }
              });
@@ -5607,7 +5727,9 @@ function eggTitle() {
 
 
 
-if(p.type.includes('icon_')) {
+// FIX: Check if 'type' exists first. 
+        // If p.type is undefined (from Farm), this check fails safely and skips to the 'else' block.
+        if(p.type && p.type.includes('icon_')) {
              let icon = p.type.split('_')[1];
              let scale = p.s/10;
              ctx.font = (20*scale)+"px sans-serif";
@@ -11340,13 +11462,30 @@ function lightning(x1, y1, x2, y2, isHeavy=false) {
 
 function popText(x, y, txt, c, outline=false, small=false) {
     let d = document.createElement('div'); 
-    d.className='float-txt'; d.innerText=txt; d.style.color=c;
+    d.className='float-txt'; 
+    d.innerText=txt; 
+    d.style.color=c;
+    
+    // VISUAL FIX: Ensure it's on top
+    d.style.zIndex = "3000"; 
+
     if(small) { d.style.fontSize = "24px"; }
+    
     let rect = cvs.getBoundingClientRect();
-    d.style.left = ((x*TILE - S.cam.x) + rect.left + 25) + 'px';
-    d.style.top = ((y*TILE - S.cam.y) + rect.top) + 'px';
-    document.body.appendChild(d); setTimeout(()=>d.remove(), 800);
+    
+    // VISUAL FIX: Add Random Offset so numbers don't stack
+    let rX = (Math.random() - 0.5) * 30; 
+    let rY = (Math.random() - 0.5) * 20;
+
+    d.style.left = ((x*TILE - S.cam.x) + rect.left + 25 + rX) + 'px';
+    d.style.top = ((y*TILE - S.cam.y) + rect.top + rY) + 'px';
+    
+    document.body.appendChild(d); 
+    setTimeout(()=>d.remove(), 800);
 }
+
+
+
 function part(x, y, c, n, s=3, type='norm') { 
     if(S.parts.length>400) return;
     for(let i=0;i<n;i++) S.parts.push({
