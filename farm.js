@@ -188,8 +188,14 @@ const Region9Farm = (function() {
     function init(mainState) {
         S = mainState; 
 
-// [THE MEAT] --- PASTE THIS NEW LINE HERE ---
-        hasShownJoke = false;
+        // [RESET FLAGS]
+        // This ensures the joke is re-enable every time you enter/refresh
+        hasShownJoke = false; 
+        
+        // This resets the counter to 0 every time you enter/refresh
+        S.farm.fishSpam = 0; 
+
+        // ... rest of init code ...
 // ------------------------------------------
 
 
@@ -767,7 +773,8 @@ const Region9Farm = (function() {
             let sh = document.getElementById('space-hint');
             if(sh) { sh.style.transform = 'scale(0.9)'; sh.style.borderColor = '#ffd700'; }
         }
-        const keyToTool = { '1':0, '2':1, '3':2, '4':3, 'q':4, 'w':5, 'e':6, 'r':7 };
+        // REMOVED 'r':7 FROM THIS LIST
+        const keyToTool = { '1':0, '2':1, '3':2, '4':3, 'q':4, 'w':5, 'e':6 };
        if(keyToTool.hasOwnProperty(key)) {
             if (S.carry) { S.farm.inventory[S.carry.id]++; S.carry = null; popText(S.p.x, S.p.y, "Canceled", "#aaa"); }
             
@@ -3037,42 +3044,48 @@ if (fire) {
 
 
 
-            
-            // [THE MEAT] --- PASTE THIS NEW CODE HERE (Replacing the old Rod Logic) ---
-        // [THE MEAT] --- PASTE THIS (Trigger at 10) ---
-       // --- 6. ROD LOGIC (The "Shortcut" Edition) ---
-        else if(toolName === 'Rod') {
-            if(tile === T.WATER) {
-                S.audio.play('fishing'); 
-                part(gx, gy, '#00b0ff', 5);
+          // --- 6. ROD LOGIC ---
+else if(toolName === 'Rod') {
+    if(tile === T.WATER) {
+        S.audio.play('fishing'); 
+        part(gx, gy, '#00b0ff', 5);
+        
+        setTimeout(() => {
+            if(Math.random() < 0.4) { 
+                S.farm.inventory.fish++; 
+                S.audio.play('item_found'); 
                 
-                setTimeout(() => {
-                    if(Math.random() < 0.4) { 
-                        S.farm.inventory.fish++; 
-                        S.audio.play('item_found'); 
-                        
-                        // --- THE JOKE LOGIC ---
-                        S.farm.fishSpam = (S.farm.fishSpam || 0) + 1;
+                // Increment Counter
+                S.farm.fishSpam = (S.farm.fishSpam || 0) + 1;
 
-// [THE MEAT] --- PASTE THIS BLOCK ---
-                        if (S.farm.fishSpam >= 10 && !hasShownJoke) {
-                            showChat("SECRET UNLOCKED 🤪", "Oops, you found the shortcut to get rich!", 4000);
-                            popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
-                            hasShownJoke = true; // Lock it!
-                        } 
-                        else {
-                            popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
-                        }
-// -----------------------------------
+                // [UPDATED]: Set to 7
+                if (S.farm.fishSpam >= 7 && !hasShownJoke) {
+                    
+// HIDE PROMPT FOR JOKE
+                    let cBox = document.getElementById('rpg-chat');
+                    if(cBox) cBox.classList.add('no-prompt');
 
-                        updateFarmUI(); 
-                    } 
-                    else {
-                        popText(S.p.x, S.p.y, "...", "#aaa", false, true);
-                    }
-                }, 800); 
+                    showChat("SECRET UNLOCKED 🤪", "Oops, you found the shortcut to get rich!", 5000);
+                    popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
+                    hasShownJoke = true; 
+
+                    // Safety Lock (Freezes player for 1.5s so they read the joke)
+                    let oldUI = S.ui;
+                    S.ui = 'locked'; 
+                    setTimeout(() => { S.ui = oldUI; }, 1500);
+                } 
+                else {
+                    popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
+                }
+                
+                updateFarmUI(); 
+            } 
+            else {
+                popText(S.p.x, S.p.y, "...", "#aaa", false, true);
             }
-        }
+        }, 800); 
+    }
+}
 
             // --- 7. FALLBACK HINTS ---
             // --- 7. FALLBACK HINTS ---
@@ -9401,29 +9414,37 @@ function addEnt(type, kind, x, y) {
 
 
 
-// [THE MEAT] --- PASTE THIS HERE (Replacing the old showChat) ---
-    // --- UPDATED CHAT HELPER (Now respects duration!) ---
+// --- Helper: RPG Chat Box ---
     function showChat(name, txt, duration) {
-        // If no duration is given, default to 3000ms (3 seconds)
         if (!duration) duration = 3000;
 
         const c = document.getElementById('rpg-chat');
         if (!c) return;
 
-        document.getElementById('chat-name').innerText = name;
-        document.getElementById('chat-text').innerText = txt;
+        // 1. ENSURE IT IS VISIBLE (Fixes the index.html conflict)
+        c.style.display = 'flex'; // <--- ADD THIS LINE !!!
         
-        c.style.opacity = 1;
+        // 2. Set Text
+        // (Use safe checking like we discussed)
+        let nEl = document.getElementById('chat-name');
+        let tEl = document.getElementById('chat-text');
+        if(nEl) nEl.innerText = name;
+        if(tEl) tEl.innerText = txt;
+        
+        // 3. Fade In
+        // Small timeout ensures the 'display:flex' applies before opacity transition
+        setTimeout(() => {
+            c.style.opacity = 1;
+        }, 10);
 
-        // 1. Clear any existing timer so it doesn't close early
+        // 4. Timer to hide
         if (c.hideTimer) clearTimeout(c.hideTimer);
-        
-        // 2. Set new timer using the duration we passed (e.g., 8000)
         c.hideTimer = setTimeout(() => {
             c.style.opacity = 0;
+            // Matches index.html cleanup logic
+            setTimeout(() => { c.style.display = 'none'; }, 200); 
         }, duration);
     }
-
 
 
 // --- FIELD EXPANSION LOGIC ---

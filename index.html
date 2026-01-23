@@ -243,7 +243,10 @@
     opacity: 0.85;
     text-shadow: 1px 1px 0 #000;
 }
-
+/* --- HIDE PROMPT WHEN REQUESTED --- */
+#rpg-chat.no-prompt::after {
+    display: none !important;
+}
 
 
 
@@ -12151,6 +12154,10 @@ function showChat(name, txt, isIntro = false) {
     stdBox.style.display = 'none'; stdBox.style.opacity = 0;
     spBox.style.display = 'none'; spBox.style.opacity = 0;
     
+// --- RESET THE PROMPT CLASS ---
+    stdBox.classList.remove('no-prompt');
+
+
     // 2. Remove old positioning classes to prevent conflicts
     spBox.classList.remove('talk-noah', 'talk-doris');
 
