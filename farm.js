@@ -5,7 +5,6 @@
     2. Exact coordinates for House/Field/Hub as requested.
     3. Proper River curves and collision logic.
 */
-
 const Region9Farm = (function() {
     
     // --- Engine Constants ---
@@ -13,9 +12,12 @@ const Region9Farm = (function() {
     const MAP_S = 300; // <--- MUST MATCH INDEX.HTML 
 
 
-// --- PASTE THIS NEW LINE HERE ---
-    let S; 
-//let handleInput = function(e) {}; // Placeholder to prevent crash
+// [THE MEAT] --- PASTE THIS NEW LINE HERE ---
+    let hasShownJoke = false;
+// ------------------------------------------
+
+
+    let S;//let handleInput = function(e) {}; // Placeholder to prevent crash
     // ------------------------------
 
 
@@ -182,8 +184,13 @@ const Region9Farm = (function() {
    
 // --- Initialization ---
    // --- Initialization ---
+    // --- Initialization ---
     function init(mainState) {
         S = mainState; 
+
+// [THE MEAT] --- PASTE THIS NEW LINE HERE ---
+        hasShownJoke = false;
+// ------------------------------------------
 
 
 
@@ -372,22 +379,26 @@ const Region9Farm = (function() {
                 
                 /* NEW CHAT BOX STYLES */
                 /* TOP CENTER BANNER - Always visible, never off-screen */
-/* RUSTIC WOODEN STYLE - Fits Farm Vibe */
+
+
+
+
+/* UPDATED CHAT POSITION */
                 #rpg-chat { 
                     position: absolute; 
-                    bottom: 20px; 
+                    bottom: 130px; /* <--- CHANGED FROM 20px TO 130px */
                     left: 50%; 
                     transform: translateX(-50%); 
                     width: 400px; 
-                    background: #4e342e; /* Dark Wood Color */
-                    border: 4px solid #8d6e63; /* Lighter Wood Frame */
+                    background: #4e342e; 
+                    border: 4px solid #8d6e63; 
                     border-radius: 6px; 
                     padding: 10px; 
                     opacity: 0; 
                     transition: opacity 0.5s; 
                     z-index: 200; 
                     pointer-events: none; 
-                    box-shadow: 0 6px 0 #271c19, 0 10px 10px rgba(0,0,0,0.5); /* 3D Depth */
+                    box-shadow: 0 6px 0 #271c19, 0 10px 10px rgba(0,0,0,0.5); 
                     display: flex; 
                     flex-direction: column; 
                     align-items: center; 
@@ -1463,50 +1474,43 @@ function updateTutorial() {
 
 
 
-
-// --- PASTE THIS NEW BLOCK HERE ---
-// Campfire Timer Logic
-// --- CAMPFIRE UPDATE LOGIC ---
+// ---// --- CAMPFIRE UPDATE LOGIC (Final No-Ghost Fix) ---
         S.ents.forEach(e => {
-            // Only run this if it is a campfire AND it is lit
             if (e.kind === 'campfire' && e.lit) {
                 
                 // 1. Burn Fuel
-                // 0.133 is the speed of game time. This ensures it lasts exactly 1 game hour.
-                e.fuel -= 0.133; 
+                e.fuel -= 0.0888; 
 
-                // 2. Make Smoke/Sparks (Visuals)
-                // We add +1 to x and y to spawn particles in the center of the 2x2 fire
-                // Reduce chance from 0.1 (10%) to 0.02 (2%)
-if (Math.random() < 0.02) part(e.x + 1, e.y + 0.5, '#ffd700', 1, 2);
-                if (Math.random() < 0.05) part(e.x + 1, e.y + 0.5, 'rgba(100,100,100,0.5)', 1); // Smoke
+                // 2. Make Smoke (White Steam) & Sparks (Yellow)
+                // Only make smoke if fuel is > 10 to prevent late ghosts
+                if (e.fuel > 10) { 
+                    // Changed color to very faint white steam (was dark grey)
+                    if (Math.random() < 0.05) part(e.x + 1, e.y + 0.5, 'rgba(255,255,255,0.1)', 1, 4); 
+                }
+                if (Math.random() < 0.02) part(e.x + 1, e.y + 0.5, '#ffd700', 1, 2);
 
                 // 3. Check if fuel is gone
                 if (e.fuel <= 0) {
                     e.lit = false; // Turn off
                     e.fuel = 0;
                     popText(e.x, e.y, "Fire is out", "#ccc");
+
+                    // --- [FIX] THE CLEANUP VACUUM ---
+                    // Instantly kill all particles near this fire so they don't linger in the dark
+                    S.parts.forEach(p => {
+                        // If particle is within 2 tiles of the fire, kill it
+                        if (Math.abs(p.x - e.x) < 2 && Math.abs(p.y - e.y) < 2) {
+                            p.life = 0; // Die instantly
+                        }
+                    });
                 }
             }
         });
 
-
-
-
-
-
-        // --- 1. TIME SYSTEM (45s = 1h) ---
-        // 45 real seconds = 60 game minutes.
-        // 60FPS assumed. 0.0222 minutes per frame.
-        // --- 1. TIME SYSTEM (BALANCED) ---
-        // 20 real seconds = 1 game hour. (Day = 8 mins)
-        // --- 1. TIME SYSTEM (SUPER FAST) ---
-        // 1 game hour = ~5 real seconds. (Full Day = ~2 mins)
-       // --- 1. TIME SYSTEM (3 MINUTES) ---
-        // 1440 mins / (3 * 60 * 60 frames) = 0.1333...
+        // --- 1. TIME SYSTEM (4.5 MINUTES) ---
+        // 1440 mins / (4.5 * 60 * 60 frames) = 0.0888...
         let prevTime = S.farm.time;
-        S.farm.time += 0.133;
-
+        S.farm.time += 0.0888;
 
 
         
@@ -1913,6 +1917,54 @@ let frontY = p.y + 0.5 + (dy / p.spd * 0.75);
 
 
         }
+
+
+// [THE MEAT] --- PASTE THIS BLOCK HERE ---
+        // --- FIX: AUTO-DROP ITEMS & HORSE AT EXIT ---
+        // Trigger line: x < 120 (The start of the bridge)
+        if (p.x < 120) {
+            
+            // 1. HORSE DISMOUNT (New!)
+            if (S.p.isRiding) {
+                S.p.isRiding = false;
+                
+                // Restore Class Speed
+                if (S.p.class === 'rogue') S.p.spd = 0.15;
+                else if (S.p.class === 'warrior') S.p.spd = 0.12;
+                else S.p.spd = 0.13;
+
+                // Teleport Horse back to the yard (Safe Spot)
+                addEnt('horse', 'horse', 132, 135);
+                
+                popText(p.x, p.y, "Horse Stayed", "#fff");
+                updateFarmUI();
+            }
+
+            // 2. CARRY DROP (Items & Small Animals)
+            if (S.carry) {
+                // Refund Items (Wood, Seeds)
+                if (S.carry.type === 'place' || S.carry.type === 'seed') {
+                    S.farm.inventory[S.carry.id] = (S.farm.inventory[S.carry.id] || 0) + 1;
+                    popText(p.x, p.y, "Returned", "#fff");
+                }
+                
+                // Return Chickens
+                else if (S.carry.type === 'chicken_place') {
+                    addEnt('chicken', 'chicken', 130, 135);
+                    popText(p.x, p.y, "Sent Home", "#fff");
+                }
+                // Return Pets
+                else if (S.carry.type === 'pet_place') {
+                    addEnt('pet', S.carry.id, 130, 135); 
+                    popText(p.x, p.y, "Sent Home", "#fff");
+                }
+
+                S.carry = null; // Clear hands
+            }
+        }
+// ----------------------------------------
+
+
 
         // --- 3. CAMERA ---
         if(S.shake > 0) S.shake *= 0.8;
@@ -2988,7 +3040,7 @@ if (fire) {
             
             // [THE MEAT] --- PASTE THIS NEW CODE HERE (Replacing the old Rod Logic) ---
         // [THE MEAT] --- PASTE THIS (Trigger at 10) ---
-        // --- 6. ROD LOGIC (The "Shortcut" Edition) ---
+       // --- 6. ROD LOGIC (The "Shortcut" Edition) ---
         else if(toolName === 'Rod') {
             if(tile === T.WATER) {
                 S.audio.play('fishing'); 
@@ -3002,23 +3054,17 @@ if (fire) {
                         // --- THE JOKE LOGIC ---
                         S.farm.fishSpam = (S.farm.fishSpam || 0) + 1;
 
+// [THE MEAT] --- PASTE THIS BLOCK ---
+                        if (S.farm.fishSpam >= 10 && !hasShownJoke) {
+                            showChat("SECRET UNLOCKED 🤪", "Oops, you found the shortcut to get rich!", 4000);
+                            popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
+                            hasShownJoke = true; // Lock it!
+                        } 
+                        else {
+                            popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
+                        }
+// -----------------------------------
 
-
-
-
-                  // [THE MEAT] --- PASTE THIS (Changed 8000 -> 4000) ---
-                            // TRIGGER AT 10
-                            if (S.farm.fishSpam === 10) {
-                                // 4000 = 4 Seconds. The perfect amount of time.
-                                showChat("SECRET UNLOCKED 🤪", "Oops, you found the shortcut to get rich!", 4000);
-                                popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
-                            } 
-                            // All other times: Just show normal fish
-                            else {
-                                popText(S.p.x, S.p.y, "🐟", "#fff", true, false, true); 
-                            }
-
-// [BOTTOM BUN] --- Ensure this is below ---
                         updateFarmUI(); 
                     } 
                     else {
@@ -6752,17 +6798,16 @@ if (t === 10) {
 
 
 
-// --- NEW HIGH-QUALITY CAMPFIRE ART ---
-                // --- PRO ART: CAMPFIRE (2x2 LARGE) ---
-              // --- PRO ART V2: ROUGH & NATURAL CAMPFIRE ---
+// --- PRO ART V2: ROUGH & NATURAL CAMPFIRE (Smoother Fade) ---
                if (e.kind === 'campfire') {
                     let cx = x + TILE; 
                     let cy = y + TILE + 10;
 
+                     
                     // --- 1. ASH PIT (Shadow) ---
-                    // Fade out EARLY (fuel < 30) so the ground is clean before the fire gets small.
-                    if (e.lit && e.fuel > 30) {
-                        let fuelRatio = Math.max(0, Math.min(1.0, (e.fuel - 30) / 40.0));
+                    // Only draw if lit AND fuel is > 20
+                    if (e.lit && e.fuel > 20) {
+                        let fuelRatio = Math.max(0, Math.min(1.0, (e.fuel - 20) / 40.0));
                         if (fuelRatio > 0.01) {
                             let ashGrad = ctx.createRadialGradient(cx, cy+5, 8, cx, cy+5, 38);
                             ashGrad.addColorStop(0, `rgba(50, 40, 40, ${0.4 * fuelRatio})`);   
@@ -6775,8 +6820,6 @@ if (t === 10) {
                     // --- 2. ROUGH LOGS ---
                     const drawRoughLog = (angle, len, width) => {
                         ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle);
-                        
-                        // Bark
                         ctx.fillStyle = '#4e342e'; 
                         ctx.beginPath();
                         ctx.moveTo(-width/2, -len); ctx.lineTo(width/2, -len); 
@@ -6784,15 +6827,10 @@ if (t === 10) {
                         ctx.lineTo(width/2, len); ctx.lineTo(-width/2, len);
                         ctx.lineTo(-width/2 - 2, len/2); ctx.lineTo(-width/2, 0); ctx.lineTo(-width/2 - 1, -len/2);
                         ctx.fill();
-
-                        // Detail
                         ctx.fillStyle = '#3e2723'; ctx.fillRect(-2, -len+5, 3, len-10); 
-                        
-                        // Ends
                         ctx.fillStyle = '#8d6e63'; ctx.beginPath(); ctx.ellipse(0, -len, width/2, width/4, 0, 0, 6.28); ctx.fill();
                         ctx.fillStyle = '#5d4037'; ctx.beginPath(); ctx.arc(0, -len, 2, 0, 6.28); ctx.fill();
                         ctx.fillStyle = '#3e2723'; ctx.beginPath(); ctx.ellipse(0, len, width/2, width/4, 0, 0, 6.28); ctx.fill();
-
                         ctx.restore();
                     };
                     drawRoughLog(0.6, 28, 12); drawRoughLog(2.5, 28, 13); drawRoughLog(4.8, 28, 12);
@@ -6802,29 +6840,24 @@ if (t === 10) {
                         let a = (i / 9) * 6.28;
                         let sx = cx + Math.cos(a) * 42;
                         let sy = cy + Math.sin(a) * 23;
-                        
                         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.beginPath(); ctx.arc(sx, sy+4, 9, 0, 6.28); ctx.fill();
-                        
                         ctx.fillStyle = '#37474f'; 
                         ctx.beginPath(); ctx.moveTo(sx-8, sy); ctx.lineTo(sx-5, sy-6); ctx.lineTo(sx+6, sy-5);
                         ctx.lineTo(sx+9, sy+2); ctx.lineTo(sx+2, sy+7); ctx.lineTo(sx-6, sy+5); ctx.fill();
-
                         ctx.fillStyle = '#78909c'; 
                         ctx.beginPath(); ctx.moveTo(sx-5, sy-6); ctx.lineTo(sx+6, sy-5); ctx.lineTo(sx+9, sy+2); ctx.lineTo(sx-2, sy+1); ctx.fill();
                     }
 
                     // --- 4. FIRE (With Shrink Logic) ---
                     if (e.lit) {
-                        // [FIX] Scale fire size based on fuel. Starts shrinking at 40 fuel.
-                        // This prevents the "POP" effect where the fire vanishes instantly.
                         let fireScale = Math.min(1.0, e.fuel / 40.0);
-                        if (fireScale < 0.1) fireScale = 0.1; // Keep tiny ember until dead
+                        if (fireScale < 0.1) fireScale = 0.1; 
 
                         let t = Date.now() / 120; 
                         let flicker = Math.sin(t*3) * 5;
                         let sway = Math.cos(t) * 5;
 
-                        // Inner Glow (Scales with fire)
+                        // Inner Glow (Layer 2)
                         let glowR = (50 + Math.sin(t)*5) * fireScale;
                         let g = ctx.createRadialGradient(cx, cy, 10 * fireScale, cx, cy, glowR);
                         g.addColorStop(0, 'rgba(255, 87, 34, 0.7)');
@@ -6833,21 +6866,17 @@ if (t === 10) {
                         ctx.beginPath(); ctx.ellipse(cx, cy-10, glowR, glowR*0.6, 0, 0, 6.28); ctx.fill();
 
                         const drawFlame = (ox, oy, w, h, col) => {
-                             ctx.fillStyle = col;
-                             ctx.beginPath();
-                             // Apply Scale to Width (w) and Height (h)
+                             ctx.fillStyle = col; ctx.beginPath();
                              ctx.moveTo(cx + (ox*fireScale) - (w*fireScale), cy + oy);
                              ctx.quadraticCurveTo(cx + (ox*fireScale) + sway, cy + oy - (h*fireScale), cx + (ox*fireScale) + (w*fireScale), cy + oy);
                              ctx.fill();
                         };
 
-                        // Draw Flames (Scaled)
                         drawFlame(0, 0, 18, 55 + flicker, '#e64a19'); 
                         drawFlame(-5, 2, 12, 40 + flicker, '#ff9800'); 
                         drawFlame(5, 2, 12, 38 - flicker, '#ff9800');  
                         drawFlame(0, 5, 8, 25 + flicker, '#fff176');   
                         
-                        // Embers
                         if(Math.random() < 0.2 * fireScale) {
                             ctx.fillStyle = '#ffeb3b';
                             ctx.fillRect(cx + (Math.random()-0.5)*30, cy - 20 - Math.random()*30, 3, 3);
@@ -6858,7 +6887,6 @@ if (t === 10) {
                     }
                     return;
                 }
-
 
 
 
@@ -8189,91 +8217,59 @@ if (S.parts.length > 400) S.parts.splice(0, S.parts.length - 400);
             // FIX: We check the time (m). 
             // - If Sunset: Use LOW intensity to prevent white-out.
             // - If Night: Use HIGH intensity to cut through the darkness.
+            
+
+
+
+// 2. DRAW SOFT CAMPFIRE GLOW ON TOP (Layer 4)
+            // Fix: Use 'lighter' blend with color-consistent transparency to avoid black halos.
             ctx.save();
             ctx.globalCompositeOperation = 'lighter'; 
-
-
-
-
 
             S.ents.forEach(e => {
                 if (e.kind === 'campfire' && e.lit) {
                      let lx = (e.x + 1) * TILE - S.cam.x + sx; 
                      let ly = (e.y + 1) * TILE - S.cam.y;
                      
-
-
-
-
-
-
-
-                    // 1. SAFE INTENSITY LOGIC (Fixes 8PM Pop & Overexposure)
+                     // 1. SAFE INTENSITY LOGIC
                      let m = S.farm.time;
-                     let targetOp = 0.25; // Default low brightness for Day & Sunset
+                     let targetOp = 0.25; 
 
-                     // A. TRANSITION TO NIGHT (19:15 - 20:30)
-                     // We wait until the sun is GONE (19:15) before brightening the fire.
-                     // This prevents the "whiteout" look during sunset.
-                     if (m >= 1155 && m < 1230) {
-                         // Smoothly go from 0.25 -> 0.60
-                         targetOp = 0.25 + ((m - 1155) / 75) * 0.35;
-                     } 
-                     // B. FULL NIGHT (20:30 - 05:00)
-                     else if (m >= 1230 || m < 300) {
-                         targetOp = 0.60; 
-                     }
-                     // C. DAWN (05:00 - 06:00)
-                     else if (m >= 300 && m < 360) {
-                         targetOp = 0.60 - ((m - 300) / 60) * 0.35;
-                     }
+                     // Night Transition Logic
+                     if (m >= 1155 && m < 1230) targetOp = 0.25 + ((m - 1155) / 75) * 0.35;
+                     else if (m >= 1230 || m < 300) targetOp = 0.60; 
+                     else if (m >= 300 && m < 360) targetOp = 0.60 - ((m - 300) / 60) * 0.35;
 
-
-
-
-
-                    // --- [FIXED] PRE-FADE LOGIC v3 ---
-                     // 1. Calculate Fuel Ratio (0.0 to 1.0)
+                     // 2. FUEL & FADE LOGIC
                      let rawIntensity = (e.fuel > 40) ? 1.0 : (e.fuel / 40.0);
-
-                     // 2. Brightness Curve: Use Square Root
-                     // Keeps light BRIGHTER for longer, preventing the "black hole" look.
                      let visualIntensity = Math.sqrt(rawIntensity);
 
-                     if (visualIntensity <= 0.001) return;
+                     // Kill graphic early if too dim
+                     if (visualIntensity <= 0.01) return;
 
-                     // Base Opacity
                      let baseOp = targetOp * visualIntensity;
-                     let midOp  = baseOp * 0.5;
+                     let midOp  = baseOp * 0.6; 
 
-                     // 2. ANIMATION
-                     let sizePulse = Math.sin(Date.now() / 400) * 3; 
-                     let flicker = (Math.random() - 0.5) * 0.04; 
+                     // 3. ANIMATION
+                     let sizePulse = Math.sin(Date.now() / 400) * 5; 
+                     let flicker = (Math.random() - 0.5) * 0.05; 
 
-
-
-
-                     // [FIX] Radius Logic: Don't shrink too much!
-                     // Keep scale above 0.8 so the light always covers the Ash Pit.
-                     // We rely on Opacity (baseOp) to do the fading, not size.
                      let scale = 0.8 + (0.2 * rawIntensity); 
                      let rad = (250 + sizePulse) * scale;
                      
-                     // Keep inner radius small to maintain core brightness
-                     let g = ctx.createRadialGradient(lx, ly, 10, lx, ly, rad);
+                     // --- THE FIX: FADE TO TRANSPARENT ORANGE (NOT BLACK) ---
+                     let g = ctx.createRadialGradient(lx, ly, 0, lx, ly, rad);
                      
-
-
-
-
-                     // Core: Brighter Yellow/White (Covers the black ash)
-                     g.addColorStop(0, `rgba(255, 220, 100, ${Math.max(0, baseOp + flicker)})`); 
+                     // Stop 0: Hot Center (Yellow/White)
+                     g.addColorStop(0, `rgba(255, 230, 150, ${Math.max(0, baseOp + flicker)})`); 
                      
-                     // Mid: Standard Orange
-                     g.addColorStop(0.4, `rgba(200, 100, 50, ${Math.max(0, midOp + flicker)})`);
+                     // Stop 0.4: Warm Body (Orange)
+                     g.addColorStop(0.4, `rgba(255, 140, 50, ${Math.max(0, midOp + flicker)})`);
                      
-                     // Edge: Fades to Pure Transparent (Fixes muddy halo)
-                     g.addColorStop(1, 'rgba(0, 0, 0, 0)'); 
+                     // Stop 1.0: TRANSPARENT ORANGE
+                     // Using the same RGB values as the previous stop (255,140,50) prevents
+                     // the interpolation from turning "brown/black" at the edge.
+                     g.addColorStop(1, 'rgba(255, 140, 50, 0)'); 
                      
                      ctx.fillStyle = g;
                      ctx.beginPath(); 
@@ -8281,8 +8277,7 @@ if (S.parts.length > 400) S.parts.splice(0, S.parts.length - 400);
                      ctx.fill();
                 }
             });
-            ctx.restore();
-        }
+            ctx.restore();        }
 
 
 

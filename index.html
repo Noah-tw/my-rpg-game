@@ -2192,20 +2192,35 @@ function loadGame(slotId) {
         // C. Redraw Minimap (Fixes "Blank Map")
         drawStyledMinimap();
 
+
+
+
        // 5. START THE GAME LOOP (Bypassing genMap!)
         document.getElementById('main-menu').style.display = 'none';
         
-         // --- FORCE MUSIC RESTART ---
+        // --- FORCE MUSIC RESTART ---
         S.audio.currentBgmKey = null; // Forget 'Home' music
         
-        // Play correct music
-        let bgm = (S.world === 'farm') ? 'farm_day' : (S.bossDead ? 'adventure_new' : 'adventure');
+        // [FIXED] CHECK TIME TO DECIDE DAY/NIGHT MUSIC
+        let bgm;
+        if (S.world === 'farm') {
+            // Check if Night (Before 6AM or After 7PM)
+            let isNight = (S.farm.time < 360 || S.farm.time >= 1140);
+            bgm = isNight ? 'farm_night' : 'farm_day';
+        } else {
+            // Main World Music
+            bgm = S.bossDead ? 'adventure_new' : 'adventure';
+        }
+
         S.audio.playBGM(bgm);
 
         S.run = true;
         loop();
 
         console.log("Save Loaded Successfully.");
+
+
+
 
     } catch (err) {
         console.error("Load Failed:", err);
