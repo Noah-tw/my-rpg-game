@@ -232,7 +232,17 @@
             z-index: 500;
             box-shadow: 0 10px 30px #000;
         }
-
+	/* NEW: Space-to-finish indicator (standard chat) */
+#rpg-chat::after{
+    content: "[SPACE] Finish";
+    position: absolute;
+    right: 18px;
+    bottom: 10px;
+    font-size: 20px;
+    color: #bbb;
+    opacity: 0.85;
+    text-shadow: 1px 1px 0 #000;
+}
 
 
 
@@ -326,6 +336,22 @@
     pointer-events: none;
     z-index: 600; 
 }
+
+
+/* SPACE indicator for special chat */
+#special-chat::after {
+    content: "[SPACE] Finish";
+    position: absolute;
+    right: 18px;
+    bottom: 12px;
+    font-size: 18px;
+    color: #5d4037;
+    opacity: 0.9;
+}
+
+
+
+
 /* --- DYNAMIC ALIGNMENT --- */
 
 /* NOAH: Image Left, Text Pushed Right */
@@ -1928,13 +1954,17 @@ const C = {
 };
 
 const CLASSES = {
-    // FIX: HP 500 -> 750 (To survive melee combat)
-warrior: { hp:750, spd:0.12, color:'#2196f3', skills:['Slash','Bash','War Stomp','Rally','Quake', 'Tornado'] },
-    // MAGE: Fragile (HP 280), Kiter (Speed 0.13)
-    mage:    { hp:280, spd:0.13, color:'#9c27b0', skills:['Inferno','Glacial Spike','Thunderstorm','Heal','AbyssalGrasp', 'Starfall'] },
-    // ROGUE: Fast (Speed 0.15), Evasive
-    rogue:   { hp:350, spd:0.15, color:'#ffb300', skills:['Shoot','PoisonCloud','Trap','Rush','ArrowStorm', 'FairyBombs'] }
+    // Warrior: Tanky (750 HP)
+    warrior: { hp:750, spd:0.12, color:'#2196f3', skills:['Slash','Bash','War Stomp','Rally','Quake', 'Tornado'] },
+    
+    // Mage: Glass Cannon (300 HP)
+    mage:    { hp:300, spd:0.13, color:'#9c27b0', skills:['Inferno','Glacial Spike','Thunderstorm','Heal','AbyssalGrasp', 'Starfall'] },
+    
+    // Ranger: Buffed slightly (350 -> 420) to survive one extra boss hit
+    rogue:   { hp:420, spd:0.15, color:'#ffb300', skills:['Shoot','PoisonCloud','Trap','Rush','ArrowStorm', 'FairyBombs'] }
 };
+
+
 
 const SKILLS = {
     // --- WARRIOR ---
@@ -2505,6 +2535,12 @@ try {
 window.onkeydown = e => {
     const k = e.key.toLowerCase();
 
+
+
+
+
+
+
     // --- 00. GLOBAL MODAL PRIORITY ---
     if(document.getElementById('confirm-modal').style.display === 'flex') {
         e.preventDefault();
@@ -2556,6 +2592,38 @@ window.onkeydown = e => {
         if(e.key === 'Escape') togglePauseMenu();
         return;
     }
+
+
+
+
+
+
+/* --- START OF NEW CODE: SPACE TO CLOSE CHAT --- */
+    // If Space/Enter is pressed AND chat is visible -> Close immediately
+    if ((k === ' ' || k === 'enter') && 
+       (document.getElementById('rpg-chat').style.display !== 'none' || 
+        document.getElementById('special-chat').style.display !== 'none')) {
+        
+        // 1. Force hide boxes
+        document.getElementById('rpg-chat').style.display = 'none';
+        document.getElementById('special-chat').style.display = 'none';
+        
+        // 2. Clear the auto-close timer (Stop it from firing later)
+        if(S.chatTo) clearTimeout(S.chatTo);
+        
+        return; // Stop here (Don't trigger attack/interact in the same frame)
+    }
+    /* --- END OF NEW CODE --- */
+
+
+
+
+
+
+
+
+
+
 
 // --- PASTE THIS ---
     if (S.world === 'farm') {
@@ -2680,8 +2748,11 @@ function startNewGame(cls) {
     
     // (Testing code removed: Bridge is now hidden by default)
 
-    document.getElementById('main-menu').style.display='none';
-    showChat("Noah", "Hey! Welcome. Talk to Elder Man!", true);
+   document.getElementById('main-menu').style.display='none';
+    
+    // VISUAL ARROWS: Instantly recognizable
+    showChat("Noah", "Use <span style='color:#ffd700'>[← ↑ ↓ →]</span> to move. <span style='color:#ffd700'>[SPACE]</span> to talk.<br>Press <span style='color:#ff5252'>Z / X / C</span> to attack!", true);
+    
     S.run = true; 
     loop();
 }
@@ -3053,7 +3124,11 @@ function genMap() {
     addObj("Frozen Friend", 30, 80, "Brrr... thanks!"); 
     addObj("Frozen Friend", 25, 75, "Friend for life!");
 
-    addNPC("Elder Man", 24, 21, "Ah, a new hero. Our world is full of messages...", 'M', 0);
+    // OLD: "Ah, a new hero..."
+    // NEW: Teaches the Save System immediately
+    addNPC("Elder Man", 24, 21, "Welcome, hero! Press <span style='color:#ffd700'>[S]</span> to Open Menu and <span style='color:#ffd700'>SAVE</span> your journey!", 'M', 0);
+
+
     addNPC("Simon", 20, 32, "Suce ma bite, I have the best restaurant in Margaret River.", 'M');
     addNPC("David", 28, 20, "Now I’m the only David at ORTV.", 'M', -1);
     addNPC("Grace", 28, 26, "“How abundant are the good things that you have stored up.” — Psalm 31:19 (NIV)", 'F');
@@ -3523,7 +3598,14 @@ function update() {
         if(e.dead) return;
 
 
-
+ // [FIX] STOP EVERYTHING IF CHATTING
+        // If the chat box is visible, freeze all entities (except player logic)
+        let chatBox = document.getElementById('rpg-chat');
+        let spBox = document.getElementById('special-chat');
+        if ((chatBox && chatBox.style.display !== 'none') || 
+            (spBox && spBox.style.display !== 'none')) {
+            return; 
+        }
 
 
 
@@ -5063,13 +5145,23 @@ function kill(m) {
 
 
 
-   // --- STOP REPLACING HERE ---
-
-    if(S.p.xp >= S.p.lvl*100) { 
+  if(S.p.xp >= S.p.lvl*100) { 
         S.p.xp=0; S.p.lvl++; S.p.maxHp+=50; S.p.hp=S.p.maxHp; 
         S.audio.play('lvlup'); 
-        popText(S.p.x, S.p.y, "LEVEL UP!", "#ffd700"); 
+        
+        // [FIX] Dual Text Feedback
+        // 1. Main Title (Gold)
+        popText(S.p.x, S.p.y, "LEVEL " + S.p.lvl + "!", "#ffd700"); 
+        
+        // 2. Stats Subtitle (Green, Small font)
+        // We use a slight random offset on Y so it doesn't overlap perfectly
+        popText(S.p.x, S.p.y - 0.5, "+50 HP & POWER UP", "#00e676", true, true);
     }
+
+
+
+
+
     let q = QUESTS[S.qStep];
     if(q && q.type==='kill' && q.target===m.name) nextQuest();
 }
@@ -12077,11 +12169,11 @@ function showChat(name, txt, isIntro = false) {
         }
 
     } else {
-        // STANDARD BOX (For everyone else)
+        // STANDARD BOX
         stdBox.style.display = 'flex';
         setTimeout(() => stdBox.style.opacity = 1, 10);
         stdName.innerText = name;
-        stdText.innerText = txt;
+        stdText.innerHTML = txt; // <--- CHANGE THIS from innerText to innerHTML
     }
     
     // Auto-close timer
