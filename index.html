@@ -2597,12 +2597,12 @@ window.onkeydown = e => {
 
 
 
-
 /* --- START OF NEW CODE: SPACE TO CLOSE CHAT --- */
-    // If Space/Enter is pressed AND chat is visible -> Close immediately
+    // If Space/Enter is pressed AND chat is visible AND we aren't locked -> Close immediately
     if ((k === ' ' || k === 'enter') && 
        (document.getElementById('rpg-chat').style.display !== 'none' || 
-        document.getElementById('special-chat').style.display !== 'none')) {
+        document.getElementById('special-chat').style.display !== 'none') && 
+        S.ui !== 'locked') { // <--- ADD THIS CHECK!
         
         // 1. Force hide boxes
         document.getElementById('rpg-chat').style.display = 'none';
@@ -2611,10 +2611,9 @@ window.onkeydown = e => {
         // 2. Clear the auto-close timer (Stop it from firing later)
         if(S.chatTo) clearTimeout(S.chatTo);
         
-        return; // Stop here (Don't trigger attack/interact in the same frame)
+        return; // Stop here
     }
     /* --- END OF NEW CODE --- */
-
 
 
 
@@ -3598,14 +3597,28 @@ function update() {
         if(e.dead) return;
 
 
- // [FIX] STOP EVERYTHING IF CHATTING
-        // If the chat box is visible, freeze all entities (except player logic)
-        let chatBox = document.getElementById('rpg-chat');
+// [FIX] INTELLIGENT CHAT FREEZE
+        // 1. Always freeze for Special Chat (Noah/Doris)
         let spBox = document.getElementById('special-chat');
-        if ((chatBox && chatBox.style.display !== 'none') || 
-            (spBox && spBox.style.display !== 'none')) {
+        if (spBox && spBox.style.display !== 'none') {
             return; 
         }
+
+        // 2. Check Standard Chat
+        let chatBox = document.getElementById('rpg-chat');
+        if (chatBox && chatBox.style.display !== 'none') {
+            // Get the name currently shown
+            let speakerName = document.getElementById('chat-name').innerText;
+            
+            // ONLY freeze if it is an NPC. 
+            // If it is "SYSTEM", let the game run so flow isn't broken.
+            if (speakerName !== "SYSTEM") {
+                return;
+            }
+        }
+
+
+
 
 
 
