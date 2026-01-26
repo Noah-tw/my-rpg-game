@@ -47,7 +47,7 @@
         }
         
         #hud-top { padding: 15px; display: flex; gap: 15px; align-items: flex-start; }
-
+}
         .stat-col { display: flex; flex-direction: column; gap: 5px; }
         .stat-box { background: rgba(0,0,0,0.85); border: 2px solid #888; padding: 5px 15px; color: #fff; font-size: 26px; display: flex; align-items: center; gap: 10px; border-radius: 8px; box-shadow: 0 4px 0 #111; }
         
@@ -194,6 +194,9 @@
 .slot { 
             width: 65px; height: 65px; background: #1a1a1a; border: 3px solid #555; 
             display: flex; flex-direction: column; align-items: center; justify-content: center;
+
+
+
             position: relative; color: #fff; 
             
             /* CHANGED HERE: Disable Mouse */
@@ -215,6 +218,27 @@
         .slot.active-tool { border-color: #00e676; box-shadow: 0 0 15px #00e676; transform: translateY(-5px); background: #222; }
 
         .key-hint { position: absolute; top: 2px; left: 5px; color: #ffd700; font-weight: bold; font-size: 16px; text-shadow: 1px 1px 0 #000; }
+
+
+
+
+
+/* --- NEW: LEVEL UP KEY FLASH (Letters pop out) --- */
+        @keyframes keyPop {
+            0%   { transform: scale(1); color: #ffd700; text-shadow: 0 0 0 transparent; }
+            15%  { transform: scale(2.5); color: #ffffff; text-shadow: 0 0 15px #ffffff; } /* Big & White */
+            100% { transform: scale(1); color: #ffd700; text-shadow: 1px 1px 0 #000; }
+        }
+
+        .key-flash {
+            animation: keyPop 0.8s ease-out !important;
+        }
+
+
+
+
+
+
         .icon { font-size: 32px; margin-top: 5px; filter: drop-shadow(0 3px 0 #000); }
         /* Removed 'transition' to fix the visual lag when cooldown starts */
         .cd { position: absolute; bottom: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8); height: 0%; border-radius: 0 0 8px 8px; }
@@ -1893,63 +1917,45 @@ const AudioSys = {
    // --- BGM CROSS-FADE SYSTEM ---
     fadeTimer: null, // Track the interval so we don't overlap fades
 
+
+
+
+
+
+
     playBGM: function(key) {
         if(this.currentBgmKey === key) return; // Already playing this track
 
-        // 1. Identify Tracks
-        let oldTrack = this.bgm; // The one currently playing
-        let newTrack = this.cache[key]; // The one we want to play
+        // 1. HARD STOP THE OLD TRACK (Crucial for iOS)
+        // iOS ignores volume changes via script, so we must PAUSE explicitly.
+        if (this.bgm) {
+            this.bgm.pause();
+            this.bgm.currentTime = 0;
+        }
 
+        // 2. Clear any lingering fade timers
+        if (this.fadeTimer) {
+            clearInterval(this.fadeTimer);
+            this.fadeTimer = null;
+        }
+
+        // 3. Prepare New Track
+        let newTrack = this.cache[key];
         if(!newTrack) return;
 
-        // 2. Clear any pending fade to prevent fighting
-        if (this.fadeTimer) clearInterval(this.fadeTimer);
-
-        // 3. Prepare New Track (Silent Start)
+        // 4. Setup and Play
         newTrack.currentTime = 0;
-        newTrack.volume = 0; 
+        newTrack.volume = 0.4; // Static volume (iOS ignores this, but good for PC)
         newTrack.loop = true;
-        newTrack.play().catch(e => console.log("Audio blocked"));
+        
+        let promise = newTrack.play();
+        if (promise !== undefined) {
+            promise.catch(e => console.log("Audio blocked by browser config"));
+        }
 
-        // 4. Update Reference
+        // 5. Update Reference
         this.bgm = newTrack;
         this.currentBgmKey = key;
-
-        // 5. Start Cross-Fade Loop (Runs every 100ms)
-        let step = 0.05; // Fade speed
-        let maxVol = 0.3; // Target volume
-
-        this.fadeTimer = setInterval(() => {
-            let doneOut = false;
-            let doneIn = false;
-
-            // Fade OUT Old Track
-            if (oldTrack) {
-                if (oldTrack.volume > step) {
-                    oldTrack.volume -= step;
-                } else {
-                    oldTrack.volume = 0;
-                    oldTrack.pause();
-                    doneOut = true;
-                }
-            } else {
-                doneOut = true; // No old track to fade
-            }
-
-            // Fade IN New Track
-            if (newTrack.volume < maxVol - step) {
-                newTrack.volume += step;
-            } else {
-                newTrack.volume = maxVol;
-                doneIn = true;
-            }
-
-            // Clean up when both are finished
-            if (doneOut && doneIn) {
-                clearInterval(this.fadeTimer);
-                this.fadeTimer = null;
-            }
-        }, 100); // Update 10 times a second
     },
 
 
@@ -2715,22 +2721,26 @@ window.onkeydown = e => {
         else if (S.world === 'farm' && farmSys) farmSys.handleInput(e);
     }
 
-  if (S.world === 'main') {
+   if (S.world === 'main') {
         // --- PREVENT ATTACKING WHILE CHATTING ---
         let chatBox = document.getElementById('rpg-chat');
         let spBox = document.getElementById('special-chat');
         
-        let isChatting = chatBox.style.display !== 'none' || spBox.style.display !== 'none';
+        let isStandardOpen = chatBox.style.display !== 'none';
+        let isSpecialOpen = spBox.style.display !== 'none';
+        let speakerName = document.getElementById('chat-name').innerText;
 
-        // EXCEPTION: If it is the Tutorial (no-lock), allow input!
-        // This lets the player press Z/X/C to see the animation.
-        if (chatBox.classList.contains('no-lock')) isChatting = false;
+        // LOGIC: Lock if (Special Box) OR (Standard Box AND Not System AND Not Tutorial)
+        let isChatting = isSpecialOpen || 
+                         (isStandardOpen && speakerName !== "SYSTEM" && !chatBox.classList.contains('no-lock'));
 
         if (!isChatting) {
             if(['z','x','c','v','b','n'].includes(e.key.toLowerCase())) cast(e.key.toLowerCase());
         }
+
         // ---------------------------------------------
     }
+
 
 
 
@@ -3603,43 +3613,35 @@ function update() {
 
     // --- 3. RPG MAIN WORLD LOGIC ---
 
-
-
-
     if(now%15 === 0) {
-        let healer = S.ents.find(e => {
-            if(e.kind !== 'Fountain' && e.kind !== 'Healing Crystal') return false;
-            let cx = e.x + e.w/2; let cy = e.y + e.h/2;
-            return Math.hypot(cx - (p.x+0.5), cy - (p.y+0.5)) < 4.0; 
-        });
-
-        if(healer) {
-            if(p.hp < p.maxHp) {
-                p.hp = Math.min(p.maxHp, p.hp + 15);
-                if(now%15===0) part(p.x, p.y, 'pink', 1, 10, 'heal_txt');
-            }
-        }
+        // ... (Healing fountain logic) ...
     }
 
     let dx=0, dy=0;
+    
 
 
-
-
-    // --- NEW: LOCK MOVEMENT WHILE CHATTING ---
-    let chatBox = document.getElementById('rpg-chat');
+  let chatBox = document.getElementById('rpg-chat');
     let spBox = document.getElementById('special-chat');
     
-    let isChatting = chatBox.style.display !== 'none' || spBox.style.display !== 'none';
+    // Check if boxes are visible
+    let isStandardOpen = chatBox.style.display !== 'none';
+    let isSpecialOpen = spBox.style.display !== 'none';
+    
+    // Get the name of who is talking
+    let speakerName = document.getElementById('chat-name').innerText;
 
-    // EXCEPTION: If it is the Tutorial (no-lock), allow movement!
-    if (chatBox.classList.contains('no-lock')) isChatting = false;
+    // LOGIC: Lock if (Special Box is Open) OR (Standard Box is Open AND It is NOT System)
+    // We also check for the 'no-lock' class (Tutorial)
+    let isChatting = isSpecialOpen || 
+                     (isStandardOpen && speakerName !== "SYSTEM" && !chatBox.classList.contains('no-lock'));
 
-    // Only allow movement if NOT chatting (or if it's tutorial)
+    // Only allow movement if NOT chatting
     if (!isChatting) {
         if(S.input.keys['arrowup']) dy=-1; if(S.input.keys['arrowdown']) dy=1;
         if(S.input.keys['arrowleft']) dx=-1; if(S.input.keys['arrowright']) dx=1;
     }
+    // -----------------------------------------
     
 
 
@@ -3702,6 +3704,9 @@ function update() {
     S.cam.x += (p.x*TILE - cvs.width/2 - S.cam.x) * 0.1;
     S.cam.y += (p.y*TILE - cvs.height/2 - S.cam.y) * 0.1;
 
+
+
+
     S.ents.forEach(e => {
         if(e.dead) return;
 
@@ -3713,15 +3718,19 @@ function update() {
             return; 
         }
 
-        // 2. Check Standard Chat
+
+
+
+       // 2. Check Standard Chat
         let chatBox = document.getElementById('rpg-chat');
         if (chatBox && chatBox.style.display !== 'none') {
             // Get the name currently shown
             let speakerName = document.getElementById('chat-name').innerText;
             
-            // ONLY freeze if it is an NPC. 
-            // If it is "SYSTEM", let the game run so flow isn't broken.
-            if (speakerName !== "SYSTEM") {
+            // FREEZE CONDITION:
+            // 1. It is NOT "SYSTEM" (System messages don't pause)
+            // 2. It is NOT the Tutorial (Tutorial has 'no-lock' class)
+            if (speakerName !== "SYSTEM" && !chatBox.classList.contains('no-lock')) {
                 return;
             }
         }
@@ -3906,10 +3915,7 @@ function update() {
                     e.moveTimer = 60 + Math.random() * 100;
                 }
             }
-
-
-
-           if(e.isWalking) {
+            if(e.isWalking) {
                 let mx = 0, my = 0;
                 let s = 0.02; 
                 if(e.moveDir === 0) my = -s;
@@ -3941,6 +3947,12 @@ function update() {
         }
 
         if(e.type==='mob') {
+            // --- TUTORIAL FIX: FREEZE MOBS WHILE READING ---
+            // If the tutorial box is open, stop the monster logic here.
+            let chatBox = document.getElementById('rpg-chat');
+            if (chatBox.style.display !== 'none' && chatBox.classList.contains('no-lock')) return;
+            // -----------------------------------------------
+
             if(e.status.freeze > now && Math.random()<0.1) part(e.x, e.y, '#00e5ff', 1); 
             if(e.status.stun > now) return;
 
@@ -4302,14 +4314,6 @@ function solid(x, y, excludeEnt=null) {
 
     if(t===T.WATER || t===T.BEDROCK || t===T.LOCK) return true;
     
-
-
-// 0. CHECK PLAYER COLLISION
-    // If the object being checked is NOT the player, check if it hits the player.
-    if (excludeEnt !== S.p && S.p) {
-        if (x >= S.p.x && x < S.p.x + 0.8 && y >= S.p.y && y < S.p.y + 0.8) return true;
-    }
-
     for(let e of S.ents) {
         if(e.dead) continue;
         if(e === excludeEnt) continue; 
@@ -4405,10 +4409,6 @@ function solid(x, y, excludeEnt=null) {
             else if(['flower','mushroom','pebble'].includes(e.kind)) continue;
             else if(Math.round(e.x) === Math.floor(x) && Math.round(e.y) === Math.floor(y)) return true;
         }
-
-
-
-
         else if(e.type==='npc') {
              // Calculate center coordinates of the NPC
              let npcX = e.x + 0.5;
@@ -4432,8 +4432,6 @@ function solid(x, y, excludeEnt=null) {
 
 
 
-
-
         else if(e.type==='farm_mob') {
              if(Math.hypot(e.x-x, e.y-y) < 0.5) return true;
         }
@@ -4446,7 +4444,12 @@ function hit(m, dmg, eff={}) {
     // If the Tutorial Box is open, attacks deal no damage.
     // This allows practice without killing mobs or dying.
     let chatBox = document.getElementById('rpg-chat');
-    if (chatBox && chatBox.classList.contains('no-lock')) return; 
+
+
+    // FIX: Only block damage if the box is visible AND has the tutorial class
+    if (chatBox && chatBox.classList.contains('no-lock') && chatBox.style.display !== 'none') {
+        return; 
+    }
     // -----------------------
 
     // --- NEW SCALING LOGIC ---
@@ -5330,11 +5333,24 @@ function kill(m) {
         // 1. LVL Label
         popUiText('lvl-val', "LEVEL UP!");
 
-        // 2. HP Bar (Uses the ID we added in Step 1)
+       // 2. HP Bar (Uses the ID we added in Step 1)
         popUiText('hp-container', "MAX HP");
 
-        // 3. Skill Bar
-        popUiText('skill-bar', "POWER UP");
+        // 3. Skill Bar: Flash Keys Only (No bar flash)
+        document.querySelectorAll('.key-hint').forEach(el => {
+            el.classList.remove('key-flash');
+            void el.offsetWidth; 
+            el.classList.add('key-flash');
+        });
+
+        // 3b. Manually add "POWER UP" text (Bypassing the white flash effect)
+        let d = document.createElement('div');
+        d.className = 'ui-pop-txt'; 
+        d.innerText = "POWER UP";
+        d.style.left = '50%'; 
+        d.style.top = '600px'; // Positioned perfectly above skill bar
+        document.getElementById('game-wrapper').appendChild(d);
+        setTimeout(() => d.remove(), 2000);
         
         // 4. Player Flash
         part(S.p.x, S.p.y, '#ffd700', 30, 5);
@@ -12428,6 +12444,9 @@ function showChat(name, txt, isIntro = false) {
             if(cd) { cd.style.display = 'block'; drawPortrait('canvas-doris', 'Doris'); }
         }
 
+
+
+
     } else {
         // STANDARD BOX
         stdBox.style.display = 'flex';
@@ -12443,6 +12462,9 @@ function showChat(name, txt, isIntro = false) {
         stdText.innerHTML = txt; 
     }
     
+
+
+
     // Auto-close timer
     if(S.chatTo) clearTimeout(S.chatTo);
     S.chatTo = setTimeout(() => { 
