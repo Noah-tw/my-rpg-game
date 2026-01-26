@@ -47,7 +47,7 @@
         }
         
         #hud-top { padding: 15px; display: flex; gap: 15px; align-items: flex-start; }
-}
+
         .stat-col { display: flex; flex-direction: column; gap: 5px; }
         .stat-box { background: rgba(0,0,0,0.85); border: 2px solid #888; padding: 5px 15px; color: #fff; font-size: 26px; display: flex; align-items: center; gap: 10px; border-radius: 8px; box-shadow: 0 4px 0 #111; }
         
@@ -882,6 +882,73 @@ border-left: 6px solid #555; color: #fff; font-size: 28px; cursor: pointer; font
         transition: 0.2s; opacity: 0.8; font-family: 'VT323';
     }
     .quit-btn:hover { opacity: 1; transform: scale(1.1); text-shadow: 0 0 10px #c0392b; }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* --- NEW: Golden Floating Text (3 Seconds) --- */
+    /* --- NEW: Metallic Gold Floating Text --- */
+   /* --- NEW: Metallic Gold Floating Text (2.0s) --- */
+    .ui-pop-txt {
+        position: absolute; 
+        font-family: 'VT323', monospace;
+        font-size: 40px; 
+        font-weight: 900; 
+        z-index: 6000; 
+        
+        /* Gold Gradient */
+        background: linear-gradient(to bottom, #ffffcc 0%, #ffd700 50%, #ff8f00 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        filter: drop-shadow(3px 3px 0 #000);
+        
+        text-align: center;
+        width: 250px;
+        pointer-events: none;
+        
+        /* Faster: 2 Seconds */
+        animation: simpleFloat 2s ease-out forwards;
+    }
+
+    @keyframes simpleFloat {
+        0%   { transform: translate(-50%, 0); opacity: 0; }
+        15%  { transform: translate(-50%, -5px); opacity: 1; }
+        70%  { transform: translate(-50%, -20px); opacity: 1; } /* Stay Solid */
+        100% { transform: translate(-50%, -35px); opacity: 0; } /* Quick Fade */
+    }
+
+    /* --- NEW: Optimized White Flash (No Lag) --- */
+    @keyframes whiteFlash {
+        0% { box-shadow: 0 0 0 transparent; border-color: #555; }
+        50% { box-shadow: 0 0 20px #fff; border-color: #fff; background-color: rgba(255,255,255,0.2); }
+        100% { box-shadow: 0 0 0 transparent; border-color: #555; background-color: transparent; }
+    }
+
+    .shine-anim {
+        animation: whiteFlash 0.5s ease-in-out;
+        will-change: box-shadow, border-color; /* Prevents lag */
+    }
+
+
+
+
+
+
+
     </style>
 
 
@@ -908,7 +975,9 @@ border-left: 6px solid #555; color: #fff; font-size: 28px; cursor: pointer; font
         <div id="hud-top">
             <div class="stat-col">
                 <div class="stat-box">❤️ 
-    <div class="bar-w">
+   <div class="bar-w" id="hp-container">
+
+
         <div id="hp-bar" class="bar-f" style="background:#e74c3c; width:100%"></div>
     </div>
 </div>
@@ -2646,9 +2715,26 @@ window.onkeydown = e => {
         else if (S.world === 'farm' && farmSys) farmSys.handleInput(e);
     }
 
-    if (S.world === 'main') {
-        if(['z','x','c','v','b','n'].includes(e.key.toLowerCase())) cast(e.key.toLowerCase());
+  if (S.world === 'main') {
+        // --- PREVENT ATTACKING WHILE CHATTING ---
+        let chatBox = document.getElementById('rpg-chat');
+        let spBox = document.getElementById('special-chat');
+        
+        let isChatting = chatBox.style.display !== 'none' || spBox.style.display !== 'none';
+
+        // EXCEPTION: If it is the Tutorial (no-lock), allow input!
+        // This lets the player press Z/X/C to see the animation.
+        if (chatBox.classList.contains('no-lock')) isChatting = false;
+
+        if (!isChatting) {
+            if(['z','x','c','v','b','n'].includes(e.key.toLowerCase())) cast(e.key.toLowerCase());
+        }
+        // ---------------------------------------------
     }
+
+
+
+
 
     // Delegate Tool Selection / Menu hotkeys to Farm Module
     if (S.world === 'farm' && farmSys) {
@@ -2753,7 +2839,8 @@ function startNewGame(cls) {
    document.getElementById('main-menu').style.display='none';
     
     // VISUAL ARROWS: Instantly recognizable
-    showChat("Noah", "Use <span style='color:#ffd700'>[← ↑ ↓ →]</span> to move. <span style='color:#ffd700'>[SPACE]</span> to talk.<br>Press <span style='color:#ff5252'>Z / X / C</span> to attack!", true);
+    // ORDER CHANGED: Arrows -> ZXC -> Space
+    showChat("Noah", "Use <span style='color:#ffd700'>[← ↑ ↓ →]</span> to move. Press <span style='color:#ff5252'>Z / X / C</span> to attack!<br><span style='color:#ffd700'>[SPACE]</span> to talk.", true);
     
     S.run = true; 
     loop();
@@ -3516,6 +3603,9 @@ function update() {
 
     // --- 3. RPG MAIN WORLD LOGIC ---
 
+
+
+
     if(now%15 === 0) {
         let healer = S.ents.find(e => {
             if(e.kind !== 'Fountain' && e.kind !== 'Healing Crystal') return false;
@@ -3532,8 +3622,24 @@ function update() {
     }
 
     let dx=0, dy=0;
-    if(S.input.keys['arrowup']) dy=-1; if(S.input.keys['arrowdown']) dy=1;
-    if(S.input.keys['arrowleft']) dx=-1; if(S.input.keys['arrowright']) dx=1;
+
+
+
+
+    // --- NEW: LOCK MOVEMENT WHILE CHATTING ---
+    let chatBox = document.getElementById('rpg-chat');
+    let spBox = document.getElementById('special-chat');
+    
+    let isChatting = chatBox.style.display !== 'none' || spBox.style.display !== 'none';
+
+    // EXCEPTION: If it is the Tutorial (no-lock), allow movement!
+    if (chatBox.classList.contains('no-lock')) isChatting = false;
+
+    // Only allow movement if NOT chatting (or if it's tutorial)
+    if (!isChatting) {
+        if(S.input.keys['arrowup']) dy=-1; if(S.input.keys['arrowdown']) dy=1;
+        if(S.input.keys['arrowleft']) dx=-1; if(S.input.keys['arrowright']) dx=1;
+    }
     
 
 
@@ -3800,7 +3906,10 @@ function update() {
                     e.moveTimer = 60 + Math.random() * 100;
                 }
             }
-            if(e.isWalking) {
+
+
+
+           if(e.isWalking) {
                 let mx = 0, my = 0;
                 let s = 0.02; 
                 if(e.moveDir === 0) my = -s;
@@ -3808,10 +3917,19 @@ function update() {
                 if(e.moveDir === 2) my = s;
                 if(e.moveDir === 3) mx = -s;
                 
+                // --- SOCIAL DISTANCING FIX ---
+                // Calculate where the NPC is trying to go
+                let futureX = e.x + mx;
+                let futureY = e.y + my;
+
+                // Check distance to Player. If too close (< 1.0 tile), STOP.
+                if (Math.hypot(futureX - S.p.x, futureY - S.p.y) < 1.0) {
+                    mx = 0; my = 0; // Don't move
+                    e.moveTimer = 0; // Pick a new random direction immediately
+                }
+                // -----------------------------
+
                 // --- FIX: SMART DIRECTIONAL COLLISION ---
-                // 1. Moving UP (Dir 0): Check the Shoulders (0.3) so head doesn't clip walls.
-                // 2. Moving DOWN (Dir 2): Check the Feet (0.9) so they stand ON the tile.
-                // 3. Side: Check the Center (0.5).
                 let offY = 0.5;
                 if (e.moveDir === 0) offY = 0.3; 
                 if (e.moveDir === 2) offY = 0.9;
@@ -4090,8 +4208,10 @@ popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true);
         let prog = (q.type==='collect'||q.type==='activate') ? ` (${S.qProg}/${q.count})` : '';
         qBox.innerText = q.txt + prog;
         
-        if(q.type === 'kill' && S.p.killLog.includes(q.target)) nextQuest();
+        
     } 
+
+
     // 2. Boss Dead + Haven't talked to Noah/Doris yet -> SHOW INSTRUCTIONS
     else if (S.bossDead && !S.epilogueSeen) {
         qBox.innerHTML = `
@@ -4182,6 +4302,14 @@ function solid(x, y, excludeEnt=null) {
 
     if(t===T.WATER || t===T.BEDROCK || t===T.LOCK) return true;
     
+
+
+// 0. CHECK PLAYER COLLISION
+    // If the object being checked is NOT the player, check if it hits the player.
+    if (excludeEnt !== S.p && S.p) {
+        if (x >= S.p.x && x < S.p.x + 0.8 && y >= S.p.y && y < S.p.y + 0.8) return true;
+    }
+
     for(let e of S.ents) {
         if(e.dead) continue;
         if(e === excludeEnt) continue; 
@@ -4277,10 +4405,35 @@ function solid(x, y, excludeEnt=null) {
             else if(['flower','mushroom','pebble'].includes(e.kind)) continue;
             else if(Math.round(e.x) === Math.floor(x) && Math.round(e.y) === Math.floor(y)) return true;
         }
+
+
+
+
         else if(e.type==='npc') {
-             // FIX: Offset collision to match drawing (Right 0.5, Down 0.7)
-             if(Math.hypot((e.x + 0.5)-x, (e.y + 0.7)-y) < 0.5) return true;
+             // Calculate center coordinates of the NPC
+             let npcX = e.x + 0.5;
+             let npcY = e.y + 0.7;
+
+             // 1. ARE WE HITTING THEM?
+             // Check if the target position (x,y) hits the NPC bubble
+             if(Math.hypot(npcX - x, npcY - y) < 0.5) {
+                 
+                 // 2. THE "AM I STUCK?" CHECK
+                 // Check if the Player is CURRENTLY inside this NPC
+                 let currentDist = Math.hypot(npcX - (S.p.x + 0.5), npcY - (S.p.y + 0.5));
+                 
+                 // If we are currently deep inside (stuck), ignore collision to let us leave.
+                 if (currentDist < 0.5) return false;
+
+                 // Otherwise, we are outside, so act like a solid wall.
+                 return true;
+             }
         }
+
+
+
+
+
         else if(e.type==='farm_mob') {
              if(Math.hypot(e.x-x, e.y-y) < 0.5) return true;
         }
@@ -4289,9 +4442,15 @@ function solid(x, y, excludeEnt=null) {
 }
 
 function hit(m, dmg, eff={}) {
+    // --- TUTORIAL SAFETY ---
+    // If the Tutorial Box is open, attacks deal no damage.
+    // This allows practice without killing mobs or dying.
+    let chatBox = document.getElementById('rpg-chat');
+    if (chatBox && chatBox.classList.contains('no-lock')) return; 
+    // -----------------------
+
     // --- NEW SCALING LOGIC ---
     // Default scaling is 1.0 if not defined. 
-    // Multi-hit skills (Starfall/Web) will use their low scale (0.05 / 0.06).
     let scaleFactor = eff.scale !== undefined ? eff.scale : 1.0;
     
     // Calculate Level Bonus: (Level-1) * 20 * ScaleFactor
@@ -5164,15 +5323,25 @@ function kill(m) {
   if(S.p.xp >= S.p.lvl*100) { 
         S.p.xp=0; S.p.lvl++; S.p.maxHp+=50; S.p.hp=S.p.maxHp; 
         S.audio.play('lvlup'); 
+
+
+// --- NEW LEVEL UP SIGNS ---
         
-        // [FIX] Dual Text Feedback
-        // 1. Main Title (Gold)
-        popText(S.p.x, S.p.y, "LEVEL " + S.p.lvl + "!", "#ffd700"); 
+        // 1. LVL Label
+        popUiText('lvl-val', "LEVEL UP!");
+
+        // 2. HP Bar (Uses the ID we added in Step 1)
+        popUiText('hp-container', "MAX HP");
+
+        // 3. Skill Bar
+        popUiText('skill-bar', "POWER UP");
         
-        // 2. Stats Subtitle (Green, Small font)
-        // We use a slight random offset on Y so it doesn't overlap perfectly
-        popText(S.p.x, S.p.y - 0.5, "+50 HP & POWER UP", "#00e676", true, true);
-    }
+        // 4. Player Flash
+        part(S.p.x, S.p.y, '#ffd700', 30, 5);
+
+
+
+           }
 
 
 
@@ -5295,18 +5464,24 @@ function nextQuest() {
     let prevQ = QUESTS[S.qStep-1];
     if(prevQ && prevQ.lock !== undefined) unlockGate(prevQ.lock);
     
-    // ONLY PLAY SOUND IF THE WHOLE GAME IS WON
+    // WIN CONDITION
     if(S.qStep >= QUESTS.length) {
         S.audio.play('victory'); 
         document.getElementById('win-screen').style.display='flex';
     } else {
-        // SILENT for normal steps
-        // The interaction sound handled in interact() is enough
-        
+        // --- FIXED: COMBO SYSTEM ---
+        // If the NEXT quest target is ALREADY dead (Pre-killed),
+        // wait 1.5 seconds, then auto-complete it.
         let nq = QUESTS[S.qStep];
-        if(nq.type==='kill' && S.p.killLog.includes(nq.target)) nextQuest();
+        
+        if(nq && nq.type==='kill' && S.p.killLog.includes(nq.target)) {
+            setTimeout(() => nextQuest(), 1500); 
+        }
     }
 }
+
+
+
 function unlockGate(id) {
     let removed = false;
     for(let i=0; i<S.map.length; i++) {
@@ -11609,6 +11784,71 @@ function popText(x, y, txt, c, outline=false, small=false) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+// --- NEW UI HELPER (Optimized) ---
+// --- NEW UI HELPER (Aligned & Snappy) ---
+// --- NEW UI HELPER (Higher Position) ---
+function popUiText(elemId, txt) {
+    let el = document.getElementById(elemId);
+    let wrapper = document.getElementById('game-wrapper');
+    if(!el || !wrapper) return;
+
+    // 1. TRIGGER FLASH
+    el.classList.remove('shine-anim'); 
+    setTimeout(() => el.classList.add('shine-anim'), 10);
+
+    // 2. POSITIONING
+    requestAnimationFrame(() => {
+        let elRect = el.getBoundingClientRect();
+        let wrapRect = wrapper.getBoundingClientRect();
+        
+        let left = (elRect.left - wrapRect.left) + (elRect.width / 2);
+        let top;
+
+        // --- POSITION FIX: MOVED UP ---
+        // Changed 110 -> 60. Lower numbers = Higher on screen.
+        if (elemId === 'hp-container' || elemId === 'lvl-val') {
+            top = 60; 
+        } else {
+            // For Skill Bar (Bottom)
+            top = (elRect.top - wrapRect.top) - 20;
+        }
+
+        // 3. CREATE TEXT
+        let d = document.createElement('div');
+        d.className = 'ui-pop-txt'; 
+        d.innerText = txt;
+        
+        d.style.left = left + 'px';
+        d.style.top = top + 'px';
+
+        wrapper.appendChild(d);
+        
+        // Remove after 2 seconds
+        setTimeout(() => d.remove(), 2000);
+    });
+}
+
+
+
+
+
+
+
+
+
+
+
+
 function part(x, y, c, n, s=3, type='norm') { 
     if(S.parts.length>400) return;
     for(let i=0;i<n;i++) S.parts.push({
@@ -12191,9 +12431,16 @@ function showChat(name, txt, isIntro = false) {
     } else {
         // STANDARD BOX
         stdBox.style.display = 'flex';
+        
+        // --- NEW: TUTORIAL EXCEPTION ---
+        // If this is the intro/tutorial, add 'no-lock' class so player can move.
+        if (isIntro) stdBox.classList.add('no-lock');
+        else stdBox.classList.remove('no-lock');
+        // -------------------------------
+
         setTimeout(() => stdBox.style.opacity = 1, 10);
         stdName.innerText = name;
-        stdText.innerHTML = txt; // <--- CHANGE THIS from innerText to innerHTML
+        stdText.innerHTML = txt; 
     }
     
     // Auto-close timer

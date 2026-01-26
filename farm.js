@@ -9285,17 +9285,42 @@ function solid(x, y, ignoreEnt) {
                 continue;
             }
 
-            // --- FIX: BUFFERED STUCK PROTECTION ---
-            if (e.kind === 'boat' && S.p) {
-                 // If player is even SLIGHTLY inside the boat (buffer 0.2), ignore collision
-                 // This prevents getting stuck on the edge after dismounting
-                 let buffer = 0.2;
-                 if (S.p.x + 0.5 >= e.x - buffer && S.p.x + 0.5 < e.x + e.w + buffer && 
-                     S.p.y + 0.5 >= e.y - buffer && S.p.y + 0.5 < e.y + e.h + buffer) {
-                     continue; 
-                 }
+
+
+
+
+            // --- BOAT COLLISION (Solid Entry, Liquid Exit) ---
+            if (e.kind === 'boat') {
+                
+                // 1. ARE WE HITTING THE BOAT?
+                // Check if target (x,y) overlaps the boat rectangle
+                if (x >= e.x && x < e.x + e.w && y >= e.y && y < e.y + e.h) {
+                    
+                    // 2. AM I ALREADY INSIDE? (The Escape Hatch)
+                    // Check if Player's CURRENT position (S.p) is inside the boat
+                    // We use +0.5 to check the center of the player
+                    let px = S.p.x + 0.5;
+                    let py = S.p.y + 0.5;
+                    
+                    // If center is inside -> IGNORE collision (Walk freely)
+                    if (px >= e.x && px < e.x + e.w && py >= e.y && py < e.y + e.h) {
+                        continue; 
+                    }
+
+                    // Otherwise -> BLOCK collision (It's a solid wall)
+                    return true;
+                }
+                
+                // If not hitting boat, just continue to next entity
+                continue; 
             }
+            // -------------------------------------------------
             // --------------------------------------
+
+
+
+
+
 
             // C. General Obstacles
 
@@ -9311,17 +9336,23 @@ function solid(x, y, ignoreEnt) {
 
 
 // --- NEW: STUCK PROTECTION (Boat) ---
-            // If the player is currently standing INSIDE a boat (e.g. just dismounted),
-            // ignore that boat's collision so they can walk out of it.
-            if (e.kind === 'boat' && S.p) {
-                 // Check if player's CENTER is inside this boat
-                 let px = S.p.x + 0.5; 
-                 let py = S.p.y + 0.5;
-                 
-                 // If we are overlapping, treat boat as non-solid
-                 if (px >= e.x && px < e.x + e.w && py >= e.y && py < e.y + e.h) {
-                     continue; 
-                 }
+// --- BOAT COLLISION (Solid Entry, Liquid Exit) ---
+            if (e.kind === 'boat') {
+                // 1. Check if TARGET position hits the boat (Standard Wall)
+                if (x >= e.x && x < e.x + e.w && y >= e.y && y < e.y + e.h) {
+                    
+                    // 2. ESCAPE HATCH: Is the Player's CENTER *already* inside?
+                    // If yes, ignore collision so they can walk out.
+                    if (S.p) {
+                        let px = S.p.x + 0.5; 
+                        let py = S.p.y + 0.5;
+                        if (px >= e.x && px < e.x + e.w && py >= e.y && py < e.y + e.h) {
+                            continue; // Allow movement
+                        }
+                    }
+                    return true; // Otherwise, Block movement
+                }
+                continue; 
             }
             // ------------------------------------
 
