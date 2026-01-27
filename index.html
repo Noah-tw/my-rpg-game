@@ -4197,63 +4197,124 @@ function update() {
 
             let d = Math.hypot(p.x-e.x, p.y-e.y);
             
-            // --- 1. IDENTIFY REGION 1 MOBS ---
+
+
+
+
+
+
+
+
+           // --- 1. IDENTIFY REGION 1 MOBS ---
             let isRegion1 = (e.name === 'Slime King' || e.name === 'Slime' || e.name === 'Goblin');
 
             // --- 2. VISION LOGIC ---
-            // Default: Boss=9, Mob=5
-            // Region 1: Boss=5 (Blind), Mob=3.5 (Very Blind)
             let vision = e.boss ? 9 : 5; 
             if (isRegion1) vision = e.boss ? 5 : 3.5;
             
-            if(d < vision || e.aggro > now) {
+            // Check if mob WANTS to chase (Visible OR Aggroed)
+            let wantsToChase = (d < vision || e.aggro > now);
+
+            // === MODE A: PLAYER IS VISIBLE (NORMAL CHASE) ===
+            if( wantsToChase && !S.p.hidden ) {
                 if(d < vision) {
-                    // --- 3. AGGRO DURATION ---
-                    // Region 1 gives up chasing very quickly (1.5s)
-                    // Others chase for 4s (Boss) or 2.5s (Mob)
                     let chaseTime = isRegion1 ? 1500 : (e.boss ? 4000 : 2500);
                     e.aggro = now + chaseTime;
                 }
 
-                // --- 4. MOVEMENT SPEED ---
+                // MOVEMENT
                 let baseSpd = (e.boss ? 0.055 : 0.04);
-                
-                // Region 1 moves at 50% speed (Easy to outrun)
                 if (isRegion1) baseSpd *= 0.5;
 
                 let s = baseSpd * speedMod;
-                
                 let mx = (p.x-e.x)/d * s; 
                 let my = (p.y-e.y)/d * s;
+                
                 if(speedMod > 0) {
                     if(!solid(e.x+mx, e.y, e)) e.x+=mx;
                     if(!solid(e.x, e.y+my, e)) e.y+=my;
                 }
-               // NEW CODE (The Fix)
-            // We add: && !S.p.hidden
-           // ... (Mob Logic) ...
 
-// 1. Added "&& !S.p.hidden" so they can't hit you while invisible
-if(d < (e.boss?2:1) && (!e.hitCd || e.hitCd < now) && speedMod > 0 && !S.p.hidden) {
-    
-    p.hp -= e.dmg;
-    S.audio.play('hurt');
-    
-    // 2. ONLY ONE POPTEXT LINE
-    popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true); 
-    
-    S.shake = 8;
-    e.hitCd = now + 1200;
-    
-    if(p.hp <= 0 && !S.gameOver) { 
-        triggerGameOver(e.name); 
-    }
+                // ATTACK (Only hits if visible)
+                if(d < (e.boss?2:1) && (!e.hitCd || e.hitCd < now) && speedMod > 0) {
+                    p.hp -= e.dmg;
+                    S.audio.play('hurt');
+                    popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true); 
+                    S.shake = 8;
+                    e.hitCd = now + 1200;
+                    if(p.hp <= 0 && !S.gameOver) triggerGameOver(e.name); 
+                }
+            }
+
+
+
+
+
+
+          // === MODE B: PLAYER IS INVISIBLE (ENGAGE CLONES) ===
+            else if ( wantsToChase && S.p.hidden && speedMod > 0 ) {
+                e.aggro = now + 100; 
+
+                // 1. Find the Ult Controller
+                let ult = S.ents.find(ent => ent.type === 'execution_controller' && !ent.dead);
+                
+                let targetX = null;
+                let targetY = null;
+
+                if (ult) {
+                    // 2. Find Nearest Visible Clone
+                    if(ult.clones && ult.clones.length > 0) {
+                        let bestDist = Infinity;
+                        ult.clones.forEach(c => {
+                            // Only target clones that are clearly visible
+                            if(c.opacity > 0.3) {
+                                let distToClone = Math.hypot(c.x - e.x, c.y - e.y);
+                                if(distToClone < bestDist) {
+                                    bestDist = distToClone;
+                                    targetX = c.x;
+                                    targetY = c.y;
+                                }
+                            }
+                        });
+                    }
+
+                    // 3. Fallback: If no clones visible, target Center (Player's last spot)
+                    if (targetX === null) {
+                        targetX = ult.x;
+                        targetY = ult.y;
+                    }
+                }
+
+                // 4. Movement Logic
+                if(targetX !== null) {
+                    let dist = Math.hypot(targetX - e.x, targetY - e.y);
+
+                    // --- THE FIX: STOPPING DISTANCE ---
+                    // Changed from 0.5 to 1.5. 
+                    // This stops them from "merging" into the clone. 
+                    // They will run up and stop at melee range.
+                    if(dist > 1.5) {
+                        let baseSpd = (e.boss ? 0.055 : 0.04);
+                        if (isRegion1) baseSpd *= 0.5;
+
+                        let s = baseSpd * speedMod;
+                        
+                        let mx = (targetX - e.x)/dist * s; 
+                        let my = (targetY - e.y)/dist * s;
+                        
+                        if(!solid(e.x+mx, e.y, e)) e.x+=mx;
+                        if(!solid(e.x, e.y+my, e)) e.y+=my;
+                    }
+                }
+            }
 }
 
 
 
-            }
-        }
+
+
+
+
         
         if(e.type==='zone') {
              e.life--; 
