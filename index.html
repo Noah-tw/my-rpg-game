@@ -2078,7 +2078,8 @@ const SKILLS = {
 
     // --- RANGER ---
     // Scale 0.06 keeps the damage balanced (15 hits x low dmg)
-'Shoot':      { k:'Z', cd:500,  icon:'🏹', dmg:12, range:10, arrow:true, scale:0.06 },
+// BUFFED: Damage 12 -> 20, Scale 0.06 -> 0.1 (Now hits harder)
+    'Shoot':       { k:'Z', cd:500,  icon:'🏹', dmg:20, range:10, arrow:true, scale:0.1 },
     // FIX: Base 10 dmg (Stronger). We will apply 4x Multiplier for Bosses in code.
 'PoisonCloud': { k:'X', cd:6000,  icon:'☠️', dmg:10, range:8, poison:200, type:'zone', scale:0.23 },
 
@@ -2087,8 +2088,11 @@ const SKILLS = {
 
 'Rush':        { k:'V', cd:10000, icon:'👟', speed:true },
 
-// Buffed Ult Damage (40 -> 65)
-'ArrowStorm':  { k:'B', cd:15000, icon:'🌧️', dmg:65, range:16, count:30, ult:true, type:'arrowRain', scale:0.5 },
+
+// --- [SANDWICH START] ---
+    // Change dmg to 18 (Total 648) - Kills Goblins/Slimes in one Ult
+   'ArrowStorm':  { k:'B', cd:15000, icon:'🟢', ult:true, type:'execution', dmg:12 }, 
+    // --- [SANDWICH END] --- 
     'FairyBombs':  { k:'N', cd:5000, icon:'🧚', dmg:35, range:12, locked:true, type:'fairy', scale:0.3 }
 };
 
@@ -2275,6 +2279,14 @@ function loadGame(slotId) {
 
         // C. RESTORE PLAYER & FARM
         S.p = data.p;
+
+
+// --- ADD THIS LINE HERE ---
+        S.p.hidden = false; 
+        // --------------------------
+
+
+
         S.farm = data.farm; // Includes inventory, day, money, AND the 'generated' flag
         
         // D. RESTORE FLAGS (Fixes "Closed Gates" and "Missing Bridge")
@@ -2299,6 +2311,17 @@ function loadGame(slotId) {
 
         // C. Redraw Minimap (Fixes "Blank Map")
         drawStyledMinimap();
+
+
+
+// --- FIX: FORCE CLOSE CHAT & MENUS ---   <-- YOU PASTED THIS
+        document.getElementById('rpg-chat').style.display = 'none';
+        document.getElementById('special-chat').style.display = 'none';
+        document.getElementById('death-screen').style.display = 'none';
+        document.getElementById('win-screen').style.display = 'none';
+        document.getElementById('pause-menu').style.display = 'none';
+        // -------------------------------------   <-- END PASTE
+
 
 
 
@@ -2780,22 +2803,27 @@ function initSharedState() {
 // 2. START NEW GAME (Runs ONLY when clicking "Start New Game")
 // 2. START NEW GAME (Runs ONLY when clicking "Start New Game")
 // 2. START NEW GAME (Runs ONLY when clicking "Start New Game")
+// FIND THIS FUNCTION
 function startNewGame(cls) {
     // A. Visuals & Audio
     AudioSys.play('class_choose');
     AudioSys.warmUp();
 
-
-
     // B. Run Shared Setup
     initSharedState();
 
     // C. Reset Player & World (The "Wipe")
-    S.curSlot = null; // <--- IMPORTANT: Unbound Save State (Prevents accidental overwrite)
+    S.curSlot = null; 
     S.p.class = cls;
+    
+    // --- ADD THIS LINE HERE ---
+    S.p.hidden = false; 
+    // --------------------------
+
     S.p.xp = 0; S.p.lvl = 1; S.p.killLog = []; S.p.actLog = {};
     S.p.cds = {}; S.p.buffs = {};
     
+    // ... rest of the function ...    
 
 
      S.unlockedRegion9 = false; 
@@ -3614,10 +3642,22 @@ function update() {
     // --- 3. RPG MAIN WORLD LOGIC ---
 
     if(now%15 === 0) {
-        // ... (Healing fountain logic) ...
+        let healer = S.ents.find(e => {
+            if(e.kind !== 'Fountain' && e.kind !== 'Healing Crystal') return false;
+            let cx = e.x + e.w/2; let cy = e.y + e.h/2;
+            return Math.hypot(cx - (p.x+0.5), cy - (p.y+0.5)) < 4.0; 
+        });
+
+        if(healer) {
+            if(p.hp < p.maxHp) {
+                p.hp = Math.min(p.maxHp, p.hp + 15);
+                if(now%15===0) part(p.x, p.y, 'pink', 1, 10, 'heal_txt');
+            }
+        }
     }
 
     let dx=0, dy=0;
+
     
 
 
@@ -3636,12 +3676,13 @@ function update() {
     let isChatting = isSpecialOpen || 
                      (isStandardOpen && speakerName !== "SYSTEM" && !chatBox.classList.contains('no-lock'));
 
-    // Only allow movement if NOT chatting
-    if (!isChatting) {
+    // --- [SANDWICH START] ---
+    // Only allow movement if NOT chatting AND NOT hidden (Ult active)
+    if (!isChatting && !S.p.hidden) {
         if(S.input.keys['arrowup']) dy=-1; if(S.input.keys['arrowdown']) dy=1;
         if(S.input.keys['arrowleft']) dx=-1; if(S.input.keys['arrowright']) dx=1;
     }
-    // -----------------------------------------
+// --- [SANDWICH END] ---
     
 
 
@@ -3709,6 +3750,141 @@ function update() {
 
     S.ents.forEach(e => {
         if(e.dead) return;
+
+
+
+
+// --- [SANDWICH START] ---
+        // === RANGER ULT: FLUORESCENT EXECUTION CIRCLE ===
+        // === RANGER ULT: FLUORESCENT EXECUTION CIRCLE ===
+       // === RANGER ULT: EXECUTION CIRCLE (Complete Reset) ===
+       // === RANGER ULT: AFTERIMAGE ARROW STORM ===
+        if(e.type === 'execution_controller') {
+            e.life++;
+            let t = e.life;
+
+            // PHASE 1: EXPANSION
+            if (t < 25) {
+                let progress = t / 25;
+                e.radius = 6.5 * (1 - Math.pow(1 - progress, 3)); 
+            }
+            
+            // PHASE 2: SPAWN CLONES (Hidden initially)
+            if (t === 25) {
+                S.audio.play('magic'); 
+                for(let i=0; i<12; i++) {
+                    let angle = (i / 12) * 6.28;
+                    
+                    // Sprite Direction
+                    let faceDir = 2; 
+                    if (i >= 8 && i <= 10) faceDir = 2; // North
+                    else if (i === 11 || i <= 1) faceDir = 3; // East
+                    else if (i >= 2 && i <= 4) faceDir = 0; // South
+                    else if (i >= 5 && i <= 7) faceDir = 1; // West
+
+                    e.clones.push({
+                        angle: angle,
+                        x: e.x + Math.cos(angle) * e.radius,
+                        y: e.y + Math.sin(angle) * e.radius,
+                        dir: faceDir,
+                        fireAnim: 0,
+                        opacity: 0 // <--- START INVISIBLE
+                    });
+                }
+            }
+
+            // PHASE 3: CLOCKWISE "ON AND OFF" FIRE
+            if (t >= 35 && t < 143) {
+                
+                // A. FADE OUT EFFECT (Every frame)
+                // Reduce opacity of all clones so they disappear after appearing
+                e.clones.forEach(cl => {
+                    if(cl.opacity > 0) cl.opacity -= 0.05; // Fade speed
+                    if(cl.opacity < 0) cl.opacity = 0;
+                });
+
+                // B. FIRE & FLASH ON (Every 3 frames)
+                if ((t - 35) % 3 === 0) {
+                    let shotNum = Math.floor((t - 35) / 3);
+                    let activeCloneIdx = (9 + shotNum) % 12; // Start 12 o'clock
+                    let c = e.clones[activeCloneIdx];
+
+                    if(c) {
+                        S.audio.play('bow');
+                        S.shake = 2; 
+                        
+                        // --- THE "ON" SWITCH ---
+                        c.opacity = 1.0; // Flash fully visible
+                        c.fireAnim = 5; 
+
+                        // Fire Arrow
+                        let dx = e.x - c.x;
+                        let dy = e.y - c.y;
+                        let dist = Math.hypot(dx, dy);
+                        let spd = 0.8; 
+
+                        S.ents.push({
+                            type: 'proj', x: c.x, y: c.y,
+                            vx: (dx/dist)*spd, vy: (dy/dist)*spd,
+                            dmg: 0, color: '#76ff03', life: 30,
+                            icon: '🏹', scale: 1.0,
+                            effect: { icon: '🏹' } 
+                        });
+
+                        // Area Damage
+                      // Area Damage
+                     // Area Damage
+                        S.ents.forEach(m => {
+                            if(m.type === 'mob' && !m.dead && Math.hypot(m.x - e.x, m.y - e.y) < 6.5) {
+                                // FIX:
+                                // 1. Uses e.dmg (18)
+                                // 2. Scale 0.08 (At Lvl 10, this adds ~500 extra damage total)
+                                // 3. knock: 0 (No pushing)
+                                hit(m, e.dmg, { color: '#ff1744', scale: 0.08, knock: 0 });
+                            }
+                        });
+                    }
+                }
+            }
+
+            // PHASE 4: CONVERGENCE (Force Visible)
+            if (t >= 143 && t <= 158) {
+                let progress = (t - 143) / 15; 
+                let ease = progress * progress * progress; 
+                e.clones.forEach(c => {
+                    c.opacity = 1.0; // <--- TURN ALL ON FOR FINALE
+                    let curR = 6.5 * (1 - ease);
+                    c.x = e.x + Math.cos(c.angle) * curR;
+                    c.y = e.y + Math.sin(c.angle) * curR;
+                });
+            }
+
+            // PHASE 5: EXPLOSION
+            if (t >= 160) {
+                S.p.hidden = false; 
+                S.audio.play('explode');
+                S.shake = 25;
+                for(let k=0; k<200; k++) {
+                    let a = Math.random() * 6.28;
+                    let s = 5 + Math.random() * 15; 
+                    let col = Math.random() > 0.3 ? '#76ff03' : '#ffffff'; 
+                    S.parts.push({
+                        x: e.x, y: e.y,
+                        vx: Math.cos(a) * s * 0.05, vy: Math.sin(a) * s * 0.05,
+                        c: col, life: 30 + Math.random()*20, s: 3, type: 'firefly'
+                    });
+                }
+                e.dead = true;
+            }
+        }
+        // ============================================
+// --- [SANDWICH END] ---
+
+
+
+
+
+
 
 
 // [FIX] INTELLIGENT CHAT FREEZE
@@ -3805,6 +3981,8 @@ function update() {
             }
         }
         // --- YONDU ARROW LOGIC END ---
+
+
 
 
 
@@ -4019,48 +4197,58 @@ function update() {
 
             let d = Math.hypot(p.x-e.x, p.y-e.y);
             
-            // --- [STRESS FIX 1] REDUCED VISION ---
-            // Old: Boss=14, Mob=9
-            // New: Boss=9 (Screen edge), Mob=5 (Safe distance)
+            // --- 1. IDENTIFY REGION 1 MOBS ---
+            let isRegion1 = (e.name === 'Slime King' || e.name === 'Slime' || e.name === 'Goblin');
+
+            // --- 2. VISION LOGIC ---
+            // Default: Boss=9, Mob=5
+            // Region 1: Boss=5 (Blind), Mob=3.5 (Very Blind)
             let vision = e.boss ? 9 : 5; 
+            if (isRegion1) vision = e.boss ? 5 : 3.5;
             
             if(d < vision || e.aggro > now) {
                 if(d < vision) {
-                    // --- [STRESS FIX 2] REDUCED CHASE TIME ---
-                    // Bosses chase for 4s, Normal mobs give up after 2.5s
-                    e.aggro = now + (e.boss ? 4000 : 2500);
+                    // --- 3. AGGRO DURATION ---
+                    // Region 1 gives up chasing very quickly (1.5s)
+                    // Others chase for 4s (Boss) or 2.5s (Mob)
+                    let chaseTime = isRegion1 ? 1500 : (e.boss ? 4000 : 2500);
+                    e.aggro = now + chaseTime;
                 }
 
-                let s = (e.boss ? 0.055 : 0.04) * speedMod;
+                // --- 4. MOVEMENT SPEED ---
+                let baseSpd = (e.boss ? 0.055 : 0.04);
+                
+                // Region 1 moves at 50% speed (Easy to outrun)
+                if (isRegion1) baseSpd *= 0.5;
+
+                let s = baseSpd * speedMod;
+                
                 let mx = (p.x-e.x)/d * s; 
                 let my = (p.y-e.y)/d * s;
                 if(speedMod > 0) {
                     if(!solid(e.x+mx, e.y, e)) e.x+=mx;
                     if(!solid(e.x, e.y+my, e)) e.y+=my;
                 }
-                if(d < (e.boss?2:1) && (!e.hitCd || e.hitCd < now) && speedMod > 0) {
-                    p.hp -= e.dmg;
-S.audio.play('hurt');
-popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true);
+               // NEW CODE (The Fix)
+            // We add: && !S.p.hidden
+           // ... (Mob Logic) ...
 
-
-
-
-
-
-
-
-                    popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true);
-                    S.shake = 8;
-                    e.hitCd = now + 1200;
-                    
-                    // --- NEW LOGIC ---
-                    if(p.hp <= 0 && !S.gameOver) { 
-                        triggerGameOver(e.name); 
-                    }
-                    // -----------------
-                }
-
+// 1. Added "&& !S.p.hidden" so they can't hit you while invisible
+if(d < (e.boss?2:1) && (!e.hitCd || e.hitCd < now) && speedMod > 0 && !S.p.hidden) {
+    
+    p.hp -= e.dmg;
+    S.audio.play('hurt');
+    
+    // 2. ONLY ONE POPTEXT LINE
+    popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true); 
+    
+    S.shake = 8;
+    e.hitCd = now + 1200;
+    
+    if(p.hp <= 0 && !S.gameOver) { 
+        triggerGameOver(e.name); 
+    }
+}
 
 
 
@@ -4143,31 +4331,34 @@ popText(p.x, p.y, `-${e.dmg}`, "#e74c3c", true);
              });
         }
 
-        if(e.type==='proj') {
+       if(e.type==='proj') {
             e.x += e.vx; e.y += e.vy; e.life--;
             if(e.icon==='🏹') part(e.x, e.y, '#fff', 1, 2); 
             if(e.icon==='🧚') part(e.x, e.y, '#ff00ff', 1, 3);
             
-            if(solid(e.x, e.y) || (e.icon==='🧪' && e.life<=1)) {
+            // --- FIX STARFALL INTERRUPTION START ---
+            // We changed the condition below. 
+            // Added (!e.star && solid(e.x, e.y))
+            // Now, stars ignore walls and only die if they hit a mob or expire.
+            if( (!e.star && solid(e.x, e.y)) || (e.icon==='🧪' && e.life<=1) ) {
                 e.dead = true;
                 // Meteor Logic
                 if(e.effect.icon==='☄️') { 
                     e.exploded=true; S.shake=15; 
                     S.ents.forEach(m => { if(m.type==='mob' && Math.hypot(e.x-m.x, e.y-m.y)<5) hit(m, e.dmg, e.effect); });
                 }
-                // Poison Flask Logic: Shatter -> Create Zone
+                // Poison Flask Logic
                 if(e.icon==='🧪') {
-                    // Glass Shards
                     part(e.x, e.y, '#ccc', 8, 2); 
-                    // Green Gas Puffs
                     part(e.x, e.y, '#8e44ad', 10, 4, 'cloud');
-                    // Create the actual Zone
                     S.ents.push({
                         type:'zone', x:e.x-3.5, y:e.y-3.5, w:7, h:7, 
                         life:250, color:'#8e44ad', poison:e.effect.poison
                     });
                 }
             }
+            // --- FIX STARFALL INTERRUPTION END ---
+
             if(!e.dead) {
                 if(e.effect.type === 'arrowRain' && e.life<=0) {
                      e.dead = true; S.shake = 5; part(e.x, e.y, '#f1c40f', 8, 3);
@@ -4484,9 +4675,11 @@ function hit(m, dmg, eff={}) {
     if(eff.burn) m.status.burn = Date.now()+3000;
     if(eff.poison) { m.status.poison = 50; part(m.x, m.y, '#8e44ad', 10, 3, 'cloud'); }
     if(eff.stun) m.status.stun = Date.now()+eff.stun;
-    if(eff.freeze) m.status.freeze = Date.now()+eff.freeze; // Use the specific freeze time
+    if(eff.freeze) m.status.freeze = Date.now()+eff.freeze; 
     
-    let k = eff.knock || 0.5;
+    // FIX: Check if knock is defined, so 0 is accepted as 0
+    let k = (eff.knock !== undefined) ? eff.knock : 0.5;
+
     if(m.boss && m.hp > 1000) k = 0; 
     // Vacuum/Pull Logic for Warrior Tornado (Optional, but you said you preferred Push)
     // if(eff.tornado) k = -0.5; 
@@ -5123,6 +5316,49 @@ if(s.stomp) {
         }
         return;
     }
+
+
+
+
+
+
+// --- [SANDWICH START] ---
+    if(s.type === 'execution') {
+        // 1. Lock Player & Hide
+        S.p.hidden = true; 
+        S.p.invuln = Date.now() + 2500; // Invincible during animation
+        
+        // 2. Spawn Controller
+        S.ents.push({
+            type: 'execution_controller',
+            x: p.x, y: p.y,
+            dmg: s.dmg,
+            life: 0,
+            maxLife: 160, // Total duration ~2.6 seconds
+            radius: 0,
+            clones: []
+        });
+        
+        S.audio.play('rush'); // Initial woosh sound
+        return;
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     if(s.type === 'shower' || s.type === 'arrowRain') {
         let color = s.type==='arrowRain' ? '#fff' : '#ff5722';
@@ -5797,6 +6033,27 @@ function eggTitle() {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
  if(v.type === 'void_ripple') {
             let x = Math.floor(v.x*TILE - S.cam.x + sx);
             let y = Math.floor(v.y*TILE - S.cam.y + sy);
@@ -6022,11 +6279,18 @@ function eggTitle() {
         }
     });
 
+    // --- [SANDWICH START] ---
     S.parts.forEach((p,i) => {
+        // FRICTION PHYSICS (Make fireflies explode fast then float)
+        if(p.type === 'firefly') {
+            p.vx *= 0.92; // Slow down 8% per frame
+            p.vy *= 0.92;
+        }
+
         p.x+=p.vx; p.y+=p.vy;
         p.life--;
         let px = p.x*TILE-S.cam.x+sx, py = p.y*TILE-S.cam.y+sy;
-        
+// --- [SANDWICH END] ---
         
 
 
@@ -6056,9 +6320,15 @@ function eggTitle() {
              ctx.fillStyle = "#ff69b4"; 
              ctx.fillText("+", px, py);
         }
+        // --- [SANDWICH START] ---
         else {
             ctx.fillStyle=p.c; 
+            
+            // FADING LOGIC
             if(p.type==='cloud') ctx.globalAlpha = p.life/50;
+            // Fireflies fade out quickly in their last 15 frames
+            else if(p.type==='firefly') ctx.globalAlpha = Math.min(1, p.life / 15); 
+// --- [SANDWICH END] ---
             
 
 
@@ -6143,8 +6413,10 @@ if(p.type==='bubble') {
     // 1. Create list, but EXCLUDE 'big_mud' (because we drew it earlier)
     let list = S.ents.filter(e => e.kind !== 'big_mud');
 
-    // 2. Add the Player to the list ONE TIME
-    if(S.p.class) list.push({type:'p', x:S.p.x, y:S.p.y, h:1});
+   // --- [SANDWICH START] ---
+    // 2. Add the Player (Only if not hidden by Ult)
+    if(S.p.class && !S.p.hidden) list.push({type:'p', x:S.p.x, y:S.p.y, h:1});
+// --- [SANDWICH END] ---
 
     // ============================================================
     
@@ -6216,6 +6488,87 @@ if(e.type==='env') drawEnv(x, y, e.kind, e);
             else if(e.type==='struct') drawStruct(x,y,e);
             else if(e.type==='p') drawHero(x,y);
             else if(e.type==='mob') drawMob(x,y,e);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// --- [SANDWICH START] ---
+            if(e.type === 'execution_controller') {
+                let px = Math.floor(e.x*TILE - S.cam.x + sx);
+                let py = Math.floor(e.y*TILE - S.cam.y + sy);
+                let r = e.radius * TILE;
+
+                // 1. Draw Ring
+                ctx.save();
+                ctx.translate(px + 25, py + 25);
+                ctx.beginPath(); ctx.arc(0, 0, r, 0, 6.28);
+                ctx.strokeStyle = `rgba(118, 255, 3, ${0.5 + Math.sin(Date.now()/50)*0.3})`; 
+                ctx.lineWidth = 3; ctx.stroke();
+                ctx.restore(); 
+                
+               // 2. Draw Clones (Afterimage Effect)
+                if(e.clones) {
+                    e.clones.forEach((c, i) => {
+                        // Skip drawing if invisible
+                        if(c.opacity <= 0.01) return;
+
+                        let cx = Math.floor(c.x * TILE - S.cam.x + sx);
+                        let cy = Math.floor(c.y * TILE - S.cam.y + sy);
+                        
+                        ctx.save();
+                        
+                        // FIX: Use the specific opacity calculated in Update
+                        ctx.globalAlpha = c.opacity;
+
+                        if (c.fireAnim > 0) {
+                            ctx.shadowColor = '#76ff03'; ctx.shadowBlur = 25; 
+                            c.fireAnim--;
+                        } 
+                        
+                        drawHero(cx, cy, c.dir); 
+                        ctx.restore();
+                    });
+                }
+            }
+// --- [SANDWICH END] ---
+
+
+
+
+
+
+
 
 
 
@@ -6717,12 +7070,17 @@ else if(e.type === 'shadow_hand') {
                     let sc = e.scale || 1.0;
                     
                     // --- ARROWS ---
-                    if(e.icon==='🏹') {
+                   if(e.icon==='🏹') {
                         let ang = Math.atan2(e.vy, e.vx);
                         ctx.save(); ctx.translate(x+25, y+25); ctx.rotate(ang); ctx.scale(sc, sc);
                         ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.lineTo(5,-5); ctx.moveTo(10,0); ctx.lineTo(5,5);
-                        ctx.lineWidth=3; ctx.strokeStyle='#fff'; ctx.stroke(); ctx.restore();
-                    } 
+                        
+                        // FIX: Use e.color if it exists (for Green), otherwise default to White
+                        ctx.lineWidth=3; 
+                        ctx.strokeStyle = e.color || '#fff'; 
+                        
+                        ctx.stroke(); ctx.restore();
+                    }
                     // --- FALLING STARS (Mage Skill N) ---
                     else if(e.star) {
                         ctx.save();
@@ -6840,6 +7198,39 @@ S.vfxs.forEach((v, i) => {
         // ... rest of the existing code ...
 
 
+
+
+
+
+
+// --- VISUAL: NEON BEAM (Ranger Ult) ---
+        if(v.type === 'neon_beam') {
+            // Calculate screen coordinates
+            let x1 = Math.floor(v.x1*TILE - S.cam.x + sx) + 25;
+            let y1 = Math.floor(v.y1*TILE - S.cam.y + sy) + 25;
+            let x2 = Math.floor(v.x2*TILE - S.cam.x + sx) + 25;
+            let y2 = Math.floor(v.y2*TILE - S.cam.y + sy) + 25;
+            
+            let alpha = v.life / v.maxLife;
+            ctx.save();
+            ctx.lineCap = 'round';
+            
+            // 1. OUTER GLOW (Thick Neon Green)
+            ctx.shadowColor = '#76ff03'; 
+            ctx.shadowBlur = 20;
+            ctx.strokeStyle = `rgba(118, 255, 3, ${alpha})`; 
+            ctx.lineWidth = 8; 
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            
+            // 2. INNER CORE (Thin White Hot)
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`; 
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            
+            ctx.restore();
+            return; // Stop processing this VFX here
+        }
 
 
 
@@ -7399,8 +7790,8 @@ function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius) {
 
 
 
-function drawHero(x, y) {
-    let dir = S.p.dir; // 0:Up, 1:Right, 2:Down, 3:Left
+function drawHero(x, y, overrideDir = null) { // <--- Added overrideDir argument
+    let dir = (overrideDir !== null) ? overrideDir : S.p.dir; // Use override if provided
     let cls = S.p.class || 'warrior';
     
     // Animation Vars
@@ -11404,9 +11795,10 @@ else {
 
 
 
-function drawEnv(x, y, k, e) {  // <--- Ensure ', e' is here
-    let px = x, py = y; 
+function drawEnv(x, y, k, e) {  // <--- Check this line
+    let px = x, py = y;         // <--- THIS LINE IS CRITICAL. If missing, 'px' error occurs.
     ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth=2;
+    
     
     if(k.includes('tree')) { 
         ctx.fillStyle='#5d4037'; ctx.fillRect(px+20, py+35, 10, 15); 
@@ -11948,8 +12340,14 @@ function drawStyledMinimap() {
 
 // --- GAME OVER & MENU LOGIC ---
 
+// FIND THIS FUNCTION
 function triggerGameOver(killerName) {
     if (S.gameOver) return; // Prevent double death
+    
+    // --- ADD THIS LINE HERE ---
+    S.p.hidden = false; 
+    // --------------------------
+
     S.gameOver = true;
     S.run = false; // STOP the game loop
     
