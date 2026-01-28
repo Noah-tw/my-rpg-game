@@ -3197,7 +3197,12 @@ function genMap() {
         if(Math.abs(x - 25) < 3 && Math.abs(y - 35) < 3) continue; 
         if(x > 115 && y > 115) continue; 
 
-        if(solid(x, y, null)) continue; 
+        // --- SAFETY: CLEAR TUCK SHOP FRONT (SIMON'S AREA) ---
+        // Forbid trees/rocks on x=17 to 24 at y=32
+        if(y === 32 && x >= 17 && x <= 24) continue;
+        // ----------------------------------------------------
+
+        if(solid(x, y, null)) continue;
         
         // --- CHECK: Is this tile inside a Big Mud or Volcano? ---
         let insideFeature = S.ents.some(e => 
@@ -3478,6 +3483,58 @@ function update() {
     if(S.paused) return; // STOP GAME IF PAUSED
     const now = Date.now();
     const p = S.p;
+
+
+
+
+
+
+
+
+
+// --- PLAYER POISON LOGIC (Damage Over Time) ---
+    if (p.poisonedUntil && p.poisonedUntil > now) {
+        // Initialize ticker if missing
+        if (!p.poisonTick) p.poisonTick = 0;
+        p.poisonTick++;
+
+        // Every 30 frames (0.5 seconds), take damage
+        if (p.poisonTick > 30) {
+            let dmg = 5; // Poison damage per tick
+            p.hp -= dmg;
+            popText(p.x, p.y, `-${dmg}`, "#8e44ad"); // Purple text
+            S.audio.play('hurt');
+            part(p.x, p.y, '#8e44ad', 3, 2); // Little bubbles
+            p.poisonTick = 0;
+            
+            // Death check
+            if(p.hp <= 0 && !S.gameOver) triggerGameOver("Hydra Poison");
+        }
+    }
+// --- PLAYER BURN LOGIC (Red & Less Damage) ---
+    if (p.burnedUntil && p.burnedUntil > now) {
+        if (!p.burnTick) p.burnTick = 0;
+        p.burnTick++;
+
+        // Every 30 frames (0.5 seconds)
+        if (p.burnTick > 30) {
+            let dmg = 3; // Lower damage than poison
+            p.hp -= dmg;
+            popText(p.x, p.y, `-${dmg}`, "#ff5722"); // Orange text
+            S.audio.play('hurt');
+            part(p.x, p.y, '#ff5722', 3, 2); // Fire sparks
+            p.burnTick = 0;
+            
+            if(p.hp <= 0 && !S.gameOver) triggerGameOver("Dragon Fire");
+        }
+    }
+
+
+
+
+
+
+
 
 
 
@@ -4205,6 +4262,116 @@ function update() {
 
 
 
+
+
+
+// --- MOB SPECIAL ATTACKS (SINGLE SOURCE OF TRUTH) ---
+            if(!e.shootCd) e.shootCd = now + Math.random()*2000;
+
+            if(d < 9 && now > e.shootCd && !S.p.hidden) {
+                
+                // CALCULATE CENTER-TO-CENTER AIM (Fixes Aim Logic)
+                let mobCx = e.x + (e.w/2);
+                let mobCy = e.y + (e.h/2);
+                let playerCx = p.x + 0.5;
+                let playerCy = p.y + 0.5;
+                let aimAng = Math.atan2(playerCy - mobCy, playerCx - mobCx);
+
+                // 1. YETI: GIANT BOULDER (Stops 1s, Aimed Correctly)
+                if(e.name.includes('Yeti')) {
+                    e.throwAnim = 40; 
+                    e.frozenUntil = now + 1000; // Freeze
+                    S.audio.play('rock'); 
+
+                    S.ents.push({
+                        type:'proj', owner:'mob', kind:'rock',
+                        x:e.x+1, y:e.y+1, // Spawn at center
+                        vx:Math.cos(aimAng)*0.15, vy:Math.sin(aimAng)*0.15,
+                        life:80, dmg:15, 
+                        color:'#90a4ae', icon:'🪨', scale: 2.5,
+                        birth: now 
+                    });
+                    e.shootCd = now + 6000 + (Math.random() * 3000); 
+                }
+
+                // 2. HYDRA: LIQUID SPIT (Stops 1s, Aimed Correctly)
+                else if(e.name.includes('Hydra')) {
+                    e.frozenUntil = now + 1000; // Freeze
+                    S.audio.play('poison'); 
+                    
+                    S.ents.push({
+                        type:'proj', owner:'mob', kind:'hydra_spit',
+                        x:e.x+1, y:e.y+1, // Spawn at center
+                        vx:Math.cos(aimAng)*0.18, vy:Math.sin(aimAng)*0.18,
+                        life:50, dmg:15, 
+                        color:'#d500f9', scale: 2.8, icon: '' 
+                    });
+                    e.shootCd = now + 3000; 
+                }
+
+                // 3. DRAGON: FIRE STREAM (Stops 1.2s)
+                else if(e.name.includes('Dragon')) {
+                    e.attackAnim = 40; 
+                    e.frozenUntil = now + 1200; 
+                    S.audio.play('explode');
+
+                    let faceDir = (p.x > e.x) ? 1 : -1;
+                    // For Dragon, we offset aiming slightly to the mouth
+                    let mouthX = mobCx + (faceDir * 0.6); 
+                    let mouthY = mobCy - 1.3; 
+                    let fireAng = Math.atan2(playerCy - mouthY, playerCx - mouthX);
+
+                    for(let i=0; i<3; i++) {
+                        let speedMod = 1.0 - (i * 0.2); 
+                        let wobble = (Math.random() - 0.5) * 0.1; 
+                        S.ents.push({
+                            type:'proj', owner:'mob', kind:'fire',
+                            x: mouthX, y: mouthY,
+                            vx:Math.cos(fireAng + wobble) * (0.19 * speedMod), 
+                            vy:Math.sin(fireAng + wobble) * (0.19 * speedMod),
+                            life:55, dmg: 14, 
+                            color:'#ff5722', icon:'🔥', scale: 3.5 
+                        });
+                    }
+                    e.shootCd = now + 3500; 
+                }
+
+                // 4. CHAOS TITAN: 4-WAY DOUBLE TAP
+                else if(e.name === 'Chaos Titan') {
+                    e.frozenUntil = now + 2000; // Freeze
+
+                    // Add slight random spin to the base angle
+                    let baseAng = aimAng + (Math.random() - 0.5) * 0.5; 
+
+                    for(let k=0; k<2; k++) {
+                        setTimeout(() => {
+                            if(e.dead) return;
+                            for(let i=0; i<4; i++) { 
+                                let chaosAng = baseAng + (i * 1.5708); 
+                                S.ents.push({
+                                    type:'proj', owner:'mob', kind:'chaos_star',
+                                    x:e.x+2, y:e.y+2, 
+                                    vx:Math.cos(chaosAng)*0.18, vy:Math.sin(chaosAng)*0.18,
+                                    life:70, dmg:35, color:'#d500f9', 
+                                    scale: 3.0, icon: '' 
+                                });
+                            }
+                            S.audio.play('magic'); 
+                        }, k * 200); 
+                    }
+                    e.shootCd = now + 4000; 
+                }
+            }
+
+
+
+
+
+
+
+
+
+
            // --- 1. IDENTIFY REGION 1 MOBS ---
             let isRegion1 = (e.name === 'Slime King' || e.name === 'Slime' || e.name === 'Goblin');
 
@@ -4215,27 +4382,44 @@ function update() {
             // Check if mob WANTS to chase (Visible OR Aggroed)
             let wantsToChase = (d < vision || e.aggro > now);
 
-            // === MODE A: PLAYER IS VISIBLE (NORMAL CHASE) ===
+
+
+// === MODE A: PLAYER IS VISIBLE (NORMAL CHASE) ===
             if( wantsToChase && !S.p.hidden ) {
                 if(d < vision) {
                     let chaseTime = isRegion1 ? 1500 : (e.boss ? 4000 : 2500);
                     e.aggro = now + chaseTime;
                 }
 
-                // MOVEMENT
+                // MOVEMENT CALCULATION
                 let baseSpd = (e.boss ? 0.055 : 0.04);
                 if (isRegion1) baseSpd *= 0.5;
 
+                // --- [CRITICAL FIX] CHECK FREEZE TIMER ---
+                let speedMod = 1;
+                
+                // 1. Check Status Effects (Ice/Slow)
+                if(e.status.slow > now) speedMod = 0.3; 
+                if(e.status.freeze > now) speedMod = 0;
+
+                // 2. Check Attack Animation Freeze (Yeti/Hydra/Dragon)
+                if (e.frozenUntil && now < e.frozenUntil) {
+                    speedMod = 0; 
+                }
+                // ----------------------------------------
+
                 let s = baseSpd * speedMod;
-                let mx = (p.x-e.x)/d * s; 
+                
+                let mx = (p.x-e.x)/d * s;
                 let my = (p.y-e.y)/d * s;
                 
+                // ONLY MOVE IF SPEED > 0
                 if(speedMod > 0) {
                     if(!solid(e.x+mx, e.y, e)) e.x+=mx;
                     if(!solid(e.x, e.y+my, e)) e.y+=my;
                 }
 
-                // ATTACK (Only hits if visible)
+                // ATTACK (Melee Hit)
                 if(d < (e.boss?2:1) && (!e.hitCd || e.hitCd < now) && speedMod > 0) {
                     p.hp -= e.dmg;
                     S.audio.play('hurt');
@@ -4245,6 +4429,19 @@ function update() {
                     if(p.hp <= 0 && !S.gameOver) triggerGameOver(e.name); 
                 }
             }
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -4392,56 +4589,106 @@ function update() {
              });
         }
 
+
+
+
+
        if(e.type==='proj') {
             e.x += e.vx; e.y += e.vy; e.life--;
             if(e.icon==='🏹') part(e.x, e.y, '#fff', 1, 2); 
             if(e.icon==='🧚') part(e.x, e.y, '#ff00ff', 1, 3);
             
-            // --- FIX STARFALL INTERRUPTION START ---
-            // We changed the condition below. 
-            // Added (!e.star && solid(e.x, e.y))
-            // Now, stars ignore walls and only die if they hit a mob or expire.
-            if( (!e.star && solid(e.x, e.y)) || (e.icon==='🧪' && e.life<=1) ) {
+
+ // FIX: ROCKS HIT OBSTACLES (With 0.5s Safety Delay)
+            // The check "(now - e.birth > 500)" ensures it doesn't break on the Yeti's own body
+            // FIX: ROCKS HIT OBSTACLES (With 0.5s Safety Delay)
+            // The check "(now - e.birth > 500)" ensures it doesn't break on the Yeti's own body
+            // FIX: ROCKS HIT OBSTACLES (With 0.5s Safety Delay)
+            // The check "(now - e.birth > 500)" ensures it doesn't break on the Yeti's own body
+          // FIX: ROCKS HIT OBSTACLES (With 0.5s Safety Delay)
+            if(e.kind === 'rock' && (now - e.birth > 500) && solid(e.x, e.y)) {
                 e.dead = true;
-                // Meteor Logic
-                if(e.effect.icon==='☄️') { 
-                    e.exploded=true; S.shake=15; 
-                    S.ents.forEach(m => { if(m.type==='mob' && Math.hypot(e.x-m.x, e.y-m.y)<5) hit(m, e.dmg, e.effect); });
-                }
-                // Poison Flask Logic
-                if(e.icon==='🧪') {
-                    part(e.x, e.y, '#ccc', 8, 2); 
-                    part(e.x, e.y, '#8e44ad', 10, 4, 'cloud');
-                    S.ents.push({
-                        type:'zone', x:e.x-3.5, y:e.y-3.5, w:7, h:7, 
-                        life:250, color:'#8e44ad', poison:e.effect.poison
-                    });
+                part(e.x, e.y, '#90a4ae', 8, 3);
+                S.audio.play('rock'); // <--- USES ROCK SMASH SOUND
+                return; 
+            }
+
+
+
+
+     // --- [SANDWICH START] ---
+            // --- A. MOB PROJECTILES (Can ONLY hurt Player) ---
+            if(e.owner === 'mob') {
+                if(!S.p.hidden && Math.hypot(e.x - S.p.x, e.y - S.p.y) < 1.0) {
+                    e.dead = true;
+                    // Damage Player
+                    S.p.hp -= e.dmg;
+                    S.audio.play('hurt');
+                    popText(S.p.x, S.p.y, `-${e.dmg}`, "#e74c3c", true);
+                    
+                    // Hydra Special: POISON EFFECT
+                    if(e.kind === 'hydra_spit') {
+                        part(S.p.x, S.p.y, '#d500f9', 10, 3);
+                        // Set poison for 4 seconds (4000ms)
+                        S.p.poisonedUntil = Date.now() + 4000; 
+                        popText(S.p.x, S.p.y - 1, "POISON!", "#8e44ad");
+                    }
+
+// Dragon Special: BURN EFFECT (50% Chance)
+                    if(e.kind === 'fire') {
+                        if(Math.random() < 0.5) { // 50% Chance
+                            part(S.p.x, S.p.y, '#ff5722', 10, 3);
+                            S.p.burnedUntil = Date.now() + 3000; // 3 Seconds
+                            popText(S.p.x, S.p.y - 1, "BURN!", "#e64a19");
+                        }
+                    }
+
+
+
+
+
+                    if(S.p.hp <= 0 && !S.gameOver) triggerGameOver("Monster Attack");
                 }
             }
-            // --- FIX STARFALL INTERRUPTION END ---
+// --- [SANDWICH END] ---
 
-            if(!e.dead) {
-                if(e.effect.type === 'arrowRain' && e.life<=0) {
-                     e.dead = true; S.shake = 5; part(e.x, e.y, '#f1c40f', 8, 3);
-                     S.ents.forEach(m => { if(m.type==='mob' && !m.dead && Math.hypot(e.x-m.x, e.y-m.y)<3) hit(m, e.dmg, e.effect); });
-                } 
-                else if(e.effect.type === 'shower' && e.life<=0) {
-                     e.dead = true; S.shake = 10; part(e.x, e.y, '#ff5722', 20, 5);
-                     S.ents.forEach(m => { if(m.type==='mob' && !m.dead && Math.hypot(e.x-m.x, e.y-m.y)<4) hit(m, e.dmg, e.effect); });
-                } 
-                else {
-                    S.ents.forEach(m => {
-                        let cx = m.x + (m.w||1)/2, cy = m.y + (m.h||1)/2;
-                        let hitDist = (e.effect.icon==='☄️'?2:1.5);
-                        
-                        if(m.type==='mob' && !m.dead && Math.hypot(e.x-cx, e.y-cy)< hitDist + (m.w||1)/2) {
-                            hit(m, e.dmg, e.effect); e.dead=true;
-                            part(e.x, e.y, e.color, 8, 3);
-                        }
-                    });
+
+            // --- B. PLAYER PROJECTILES (Can ONLY hurt Mobs) ---
+            else {
+                // ... (This preserves your existing player attack logic) ...
+                if( (!e.star && solid(e.x, e.y)) || (e.icon==='🧪' && e.life<=1) ) {
+                    e.dead = true;
+                    if(e.effect && e.effect.icon==='☄️') { 
+                        e.exploded=true; S.shake=15; 
+                        S.ents.forEach(m => { if(m.type==='mob' && Math.hypot(e.x-m.x, e.y-m.y)<5) hit(m, e.dmg, e.effect); });
+                    }
+                    if(e.icon==='🧪') {
+                        part(e.x, e.y, '#ccc', 8, 2); 
+                        part(e.x, e.y, '#8e44ad', 10, 4, 'cloud');
+                        // This uses your original Zone logic for Player Skill
+                        S.ents.push({type:'zone', x:e.x-3.5, y:e.y-3.5, w:7, h:7, life:250, color:'#8e44ad', poison:e.effect.poison});
+                    }
+                }
+
+                if(!e.dead) {
+                    if(e.effect && e.effect.type === 'arrowRain' && e.life<=0) {
+                         e.dead = true; S.shake = 5; part(e.x, e.y, '#f1c40f', 8, 3);
+                         S.ents.forEach(m => { if(m.type==='mob' && !m.dead && Math.hypot(e.x-m.x, e.y-m.y)<3) hit(m, e.dmg, e.effect); });
+                    } 
+                    else {
+                        S.ents.forEach(m => {
+                            let cx = m.x + (m.w||1)/2, cy = m.y + (m.h||1)/2;
+                            let hitDist = (e.effect && e.effect.icon==='☄️'?2:1.5);
+                            if(m.type==='mob' && !m.dead && Math.hypot(e.x-cx, e.y-cy)< hitDist + (m.w||1)/2) {
+                                hit(m, e.dmg, e.effect||{}); e.dead=true;
+                                part(e.x, e.y, e.color, 8, 3);
+                            }
+                        });
+                    }
                 }
             }
         }
+// --- [SANDWICH END] ---
         
         if(e.type==='vfx_proj') {
             e.x += e.vx; e.y += e.vy; e.life--; e.scale += 0.03; 
@@ -4624,6 +4871,14 @@ function solid(x, y, excludeEnt=null) {
         else if(e.type==='env') {
 
 
+ // FIX: DRAGON FLIGHT
+            // If the moving entity is the Dragon (or Titan), ignore rocks/trees.
+            // They are huge and should crush/fly over small obstacles.
+            if(excludeEnt && (excludeEnt.name.includes('Dragon') || excludeEnt.name === 'Chaos Titan')) {
+                continue; 
+            }
+
+
 // 1. ALLOW WALKING THROUGH MUD (Add this line)
             if(e.kind === 'big_mud') continue; 
 
@@ -4657,10 +4912,36 @@ function solid(x, y, excludeEnt=null) {
             }
 
            
-            if(e.kind==='Fence') { if(Math.abs(e.x-x)<0.5 && Math.abs(e.y-y)<0.5) return true; }
+
+
+
+          if(e.kind==='Fence') { if(Math.abs(e.x-x)<0.5 && Math.abs(e.y-y)<0.5) return true; }
             else if(['flower','mushroom','pebble'].includes(e.kind)) continue;
-            else if(Math.round(e.x) === Math.floor(x) && Math.round(e.y) === Math.floor(y)) return true;
-        }
+            
+            // --- LIQUID LOGIC (STRICT CENTER) ---
+            else if(Math.round(e.x) === Math.floor(x) && Math.round(e.y) === Math.floor(y)) {
+                
+                if(excludeEnt) {
+                    // Check the NPC's CURRENT Center Point (x + 0.5)
+                    // If the NPC's CENTER is currently inside the tree tile, they are stuck -> Let them out.
+                    // If the NPC's CENTER is outside (neighbor tile), this returns false -> Block them.
+                    let npcCenterX = Math.floor(excludeEnt.x + 0.5);
+                    let npcCenterY = Math.floor(excludeEnt.y + 0.5);
+                    
+                    if (npcCenterX === Math.round(e.x) && npcCenterY === Math.round(e.y)) {
+                        return false; 
+                    }
+                }
+                
+                return true;
+            }
+            // ------------------------------------
+
+}
+
+
+
+
         else if(e.type==='npc') {
              // Calculate center coordinates of the NPC
              let npcX = e.x + 0.5;
@@ -7064,115 +7345,149 @@ else if(e.type === 'shadow_hand') {
 
 
             // --- PASTE THIS NEW PROJECTILE BLOCK ---
-           else if(e.type==='proj') { 
+          else if(e.type==='proj') { 
                 
-
-
-
-
-                // 1. PHOENIX FIRE (Skill Z)
+                // 1. VISUAL: PHOENIX FIRE (Warrior Z)
                 if(e.vfxType === 'phoenix_fire') {
                     let angle = Math.atan2(e.vy, e.vx);
                     let time = (Date.now() - e.birth) / 50; 
-
                     if(Math.random() < 0.4) {
                          part(e.x - e.vx*2, e.y - e.vy*2, Math.random()>.5?'#ff5722':'#ffff00', 1, 3+Math.random()*4, 'cloud');
                     }
-
-                    ctx.save();
-                    ctx.translate(x, y);
-                    ctx.rotate(angle); 
-                    
-                    // Huge Scale
-                    ctx.scale(2.5, 2.5); 
-
-                    // Draw Helix Tail
+                    ctx.save(); ctx.translate(x, y); ctx.rotate(angle); ctx.scale(2.5, 2.5); 
                     ctx.lineCap = 'round';
                     for(let k=0; k<2; k++) {
                         let phase = k === 0 ? 0 : Math.PI; 
                         let tailLen = 45;
-                        
                         ctx.beginPath();
                         for(let i=0; i<tailLen; i+=2) {
                             let progress = i / tailLen; 
                             let thickness = (1 - progress) * 6;
                             let wave = Math.sin(i * 0.2 - time + phase) * (5 + (i*0.2)); 
-                            
-                            let px = -i; 
-                            let py = wave; 
-
+                            let px = -i; let py = wave; 
                             if(i===0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-                            
                             let c = progress < 0.2 ? '#fff' : (progress < 0.5 ? '#ffeb3b' : '#ff5722');
-                            ctx.strokeStyle = c;
-                            ctx.lineWidth = thickness;
-                            ctx.stroke();
+                            ctx.strokeStyle = c; ctx.lineWidth = thickness; ctx.stroke();
                             ctx.beginPath(); ctx.moveTo(px, py); 
                         }
                         ctx.stroke();
                     }
-
-                    // Draw Core
                     ctx.shadowColor = '#ff3d00'; ctx.shadowBlur = 20;
-                    ctx.fillStyle = '#fff';
-                    ctx.beginPath(); ctx.ellipse(5, 0, 8, 5, 0, 0, 6.28); ctx.fill();
-
-                    ctx.fillStyle = 'rgba(255, 152, 0, 0.6)';
-                    ctx.beginPath(); ctx.arc(0, 0, 12, 0, 6.28); ctx.fill();
-
-                    ctx.shadowBlur = 0;
-                    ctx.restore();
+                    ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.ellipse(5, 0, 8, 5, 0, 0, 6.28); ctx.fill();
+                    ctx.fillStyle = 'rgba(255, 152, 0, 0.6)'; ctx.beginPath(); ctx.arc(0, 0, 12, 0, 6.28); ctx.fill();
+                    ctx.shadowBlur = 0; ctx.restore();
                 } 
                 
-                // 2. STANDARD PROJECTILES (Stars, Arrows, etc.)
+                // 2. VISUAL: STANDARD PROJECTILES (Mobs + Player)
                 else {
-                    ctx.shadowColor = e.color; ctx.shadowBlur = 15;
-                    ctx.fillStyle = e.color; 
                     let sc = e.scale || 1.0;
-                    
-                    // --- ARROWS ---
-                   if(e.icon==='🏹') {
+
+
+
+
+
+                   // --- A. CHAOS TITAN: SPINNING VOID STAR ---
+                    if(e.kind === 'chaos_star') {
+                        ctx.save();
+                        ctx.translate(x, y);
+                        ctx.rotate(Date.now() / 100); // Fast Spin
+                        ctx.scale(sc, sc); 
+                        
+                        ctx.fillStyle = '#000'; // Black Core
+                        ctx.strokeStyle = '#d500f9'; // Purple Edge
+                        ctx.lineWidth = 2;
+                        ctx.shadowColor = '#d500f9'; ctx.shadowBlur = 15;
+                        
+                        ctx.beginPath();
+                        for(let i=0; i<8; i++) {
+                            let r = (i%2===0) ? 10 : 4; 
+                            let a = (i/8) * 6.28;
+                            ctx.lineTo(Math.cos(a)*r, Math.sin(a)*r);
+                        }
+                        ctx.closePath();
+                        ctx.fill(); ctx.stroke();
+                        ctx.shadowBlur = 0;
+                        ctx.restore();
+                    }
+
+
+
+
+                   // --- [SANDWICH START] ---
+                    // --- B. HYDRA: LIQUID SPIT (Purple & Large) ---
+                    else if(e.kind === 'hydra_spit') {
                         let ang = Math.atan2(e.vy, e.vx);
-                        ctx.save(); ctx.translate(x+25, y+25); ctx.rotate(ang); ctx.scale(sc, sc);
-                        ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.lineTo(5,-5); ctx.moveTo(10,0); ctx.lineTo(5,5);
-                        
-                        // FIX: Use e.color if it exists (for Green), otherwise default to White
-                        ctx.lineWidth=3; 
-                        ctx.strokeStyle = e.color || '#fff'; 
-                        
-                        ctx.stroke(); ctx.restore();
-                    }
-                    // --- FALLING STARS (Mage Skill N) ---
-                    else if(e.star) {
                         ctx.save();
                         ctx.translate(x, y);
-                        // Add a slow spin to the star
-                        ctx.rotate(Date.now() / 200); 
+                        ctx.rotate(ang - 1.57); 
+                        ctx.scale(sc, sc);
+
+                        // Draw Blob (Purple)
+                        ctx.fillStyle = '#d500f9'; // Neon Purple
+                        ctx.shadowColor = '#e040fb'; ctx.shadowBlur = 15;
+                        ctx.beginPath();
+                        ctx.arc(0, 0, 6, 0, Math.PI, false); // Bigger base
+                        ctx.lineTo(0, 18); // Longer tail
+                        ctx.closePath();
+                        ctx.fill();
                         
-                        // We use the helper function, but we need to account for the translation
-                        // Since we translated to (x,y), we draw at (0,0)
-                        drawStar(ctx, 0, 0, 5, 20 * sc, 10 * sc);
+                        // Toxic Shine (Lighter Purple)
+                        ctx.fillStyle = '#ea80fc';
+                        ctx.beginPath(); ctx.arc(-2, 2, 2, 0, 6.28); ctx.fill();
                         
-                        ctx.restore();
-                    } 
-                    // --- POISON FLASK ---
-                    else if(e.icon === '🧪') {
-                        ctx.save();
-                        ctx.translate(x, y);
-                        ctx.rotate(Date.now()/150); // Spin animation
-                        ctx.font = "24px sans-serif";
-                        ctx.shadowBlur=0; 
-                        ctx.fillText('🧪', -12, 8);
+                        ctx.shadowBlur = 0;
                         ctx.restore();
                     }
-                    // --- DEFAULT ORBS ---
+// --- [SANDWICH END] ---
+
+                    // --- C. GENERIC MOB ICONS (Rock, Fire) ---
+                    else if(e.icon === '🪨' || e.icon === '🔥') {
+                        ctx.save();
+                        ctx.translate(x, y);
+                        if(e.icon === '🪨') ctx.rotate(Date.now() / 150); // Spin Rock
+                        
+                        ctx.font = (20 * sc) + "px sans-serif";
+                        ctx.textAlign = "center";
+                        ctx.textBaseline = "middle";
+                        ctx.fillText(e.icon, 0, 0);
+                        ctx.restore();
+                    }
+
+                    // --- D. PLAYER ATTACKS (Keep Existing) ---
                     else {
-                        ctx.beginPath(); ctx.arc(x, y, e.effect.icon==='☄️'?20:8, 0, 6.28); ctx.fill(); 
+                        ctx.shadowColor = e.color; ctx.shadowBlur = 15;
+                        ctx.fillStyle = e.color; 
+                        
+                        if(e.icon==='🏹') {
+                            let ang = Math.atan2(e.vy, e.vx);
+                            ctx.save(); ctx.translate(x+25, y+25); ctx.rotate(ang); ctx.scale(sc, sc);
+                            ctx.beginPath(); ctx.moveTo(-10,0); ctx.lineTo(10,0); ctx.lineTo(5,-5); ctx.moveTo(10,0); ctx.lineTo(5,5);
+                            ctx.lineWidth=3; ctx.strokeStyle = e.color || '#fff'; 
+                            ctx.stroke(); ctx.restore();
+                        }
+                        else if(e.star) {
+                            ctx.save(); ctx.translate(x, y); ctx.rotate(Date.now() / 200); 
+                            drawStar(ctx, 0, 0, 5, 20 * sc, 10 * sc); ctx.restore();
+                        } 
+                        else if(e.icon === '🧪') {
+                            ctx.save(); ctx.translate(x, y); ctx.rotate(Date.now()/150); 
+                            ctx.font = "24px sans-serif"; ctx.shadowBlur=0; ctx.fillText('🧪', -12, 8); ctx.restore();
+                        }
+                        else {
+                            ctx.beginPath(); ctx.arc(x, y, (e.effect && e.effect.icon==='☄️')?20:8, 0, 6.28); ctx.fill(); 
+                        }
+                        ctx.shadowBlur=0;
                     }
-                    ctx.shadowBlur=0;
                 }
+// --- [SANDWICH END] ---
             }
-            // ---------------------------------------
+
+
+
+
+
+
+
 
 
 
@@ -7871,11 +8186,30 @@ function drawHero(x, y, overrideDir = null) { // <--- Added overrideDir argument
     // MIRROR FOR LEFT VIEW
     if (dir === 3) ctx.scale(-1, 1); 
 
-    // --- COLOR PALETTES ---
+
+
+
+// --- COLOR PALETTES ---
     let cSkin='#ffe0bd', cEye='#111';
     let cMain, cSec, cAcc, cDark, cBoot, cHair, cHigh;
 
-    if(cls === 'warrior') { 
+    // --- CHECK POISON STATUS ---
+ // --- CHECK STATUS EFFECTS ---
+    let isPoisoned = (S.p.poisonedUntil && S.p.poisonedUntil > Date.now());
+    let isBurned   = (S.p.burnedUntil && S.p.burnedUntil > Date.now());
+
+
+
+
+
+
+
+
+    if(cls === 'warrior') {
+
+
+
+
         cMain='#eceff1'; cSec='#1565c0'; cAcc='#ffd700'; cDark='#455a64'; cBoot='#37474f';
         cHair='#3e2723'; cHigh='#ffffff'; // Metallic Highlight
     } else if(cls === 'mage') { 
@@ -7886,6 +8220,23 @@ function drawHero(x, y, overrideDir = null) { // <--- Added overrideDir argument
         cMain='#37474f'; cSec='#ff6d00'; cAcc='#ffeb3b'; cDark='#263238'; cBoot='#212121';
         cHair='#5d4037'; cHigh='#ff9e80'; // Cloth Texture
     }
+
+// --- APPLY POISON TINT ---
+    if(isPoisoned) {
+        cSkin = '#ce93d8'; // Purple Skin
+        cMain = '#7b1fa2'; // Dark Purple Clothes
+        cAcc  = '#e1bee7'; // Light Purple accents
+    }
+// --- APPLY BURN TINT ---
+    if(isBurned) {
+        cSkin = '#ffab91'; // Reddish Skin
+        cMain = '#bf360c'; // Burnt Red Clothes
+        cAcc  = '#ff5722'; // Bright Orange Accents
+    }
+
+
+
+
 
     // --- RIDING LIFT ---
     let lift = S.p.isRiding ? 12 : 0;
@@ -9179,20 +9530,33 @@ function drawMob(x, y, m) {
 
 
    // REPLACES THE RED DRAGON BLOCK
+   // --- [SANDWICH START] ---
+   // REPLACES THE RED DRAGON BLOCK
     else if(m.name.includes('Dragon')) {
         // --- 1. DYNAMIC FACE DIRECTION ---
-        // If Player X > Dragon X, Face Right (1). Else Face Left (-1).
         let faceDir = (S.p.x > m.x) ? 1 : -1;
 
-        ctx.save(); // Start Flip Group
-        
-        // Pivot around the center of the sprite (x+25)
+        ctx.save(); 
         ctx.translate(x+25, y+25); 
         ctx.scale(faceDir, 1); 
         ctx.translate(-(x+25), -(y+25)); 
 
-        // Animation: Flapping wings
-        let flap = Math.sin(Date.now() / 150) * 5;
+        // --- ANIMATION CALCULATIONS ---
+        let lunge = 0;      // Head forward movement
+        let mouthOpen = 0;  // Jaw drop
+        let flapSpeed = 150; // Normal flap speed
+
+        if (m.attackAnim > 0) {
+            m.attackAnim--; 
+            // Smooth Lunge: 0 -> 10px -> 0
+            let progress = Math.sin((m.attackAnim / 40) * Math.PI);
+            
+            lunge = progress * 10; 
+            mouthOpen = progress * 6;
+            flapSpeed = 60; // Flap furiously when attacking
+        }
+
+        let flap = Math.sin(Date.now() / flapSpeed) * 5;
 
         // 1. WINGS (Behind Body) - Dark Red
         ctx.fillStyle = '#8b0000'; 
@@ -9210,7 +9574,7 @@ function drawMob(x, y, m) {
         ctx.lineTo(x+25, y+15-b); 
         ctx.fill();
 
-        // 2. TAIL (Wags slightly)
+        // 2. TAIL (Wags)
         ctx.fillStyle = tint || '#c62828';
         ctx.beginPath(); 
         ctx.moveTo(x+25, y+35-b); 
@@ -9222,46 +9586,65 @@ function drawMob(x, y, m) {
         ctx.fillStyle = tint || '#c62828'; // Red
         ctx.fillRect(x+15, y+15-b, 20, 25); 
         
-        // Belly (Orange strips)
+        // Belly
         ctx.fillStyle = '#ffcc80';
         ctx.fillRect(x+20, y+15-b, 10, 20);
         
-        // Rib lines (Texture)
+        // Rib lines
         ctx.fillStyle = 'rgba(0,0,0,0.2)';
         ctx.fillRect(x+20, y+20-b, 10, 2); 
         ctx.fillRect(x+20, y+25-b, 10, 2); 
         ctx.fillRect(x+20, y+30-b, 10, 2);
 
-        // 4. HEAD & NECK
+        // 4. NECK & HEAD (Animated Lunge)
         ctx.fillStyle = tint || '#c62828';
-        // Neck connecting to body
+        
+        // Neck (Stretches with lunge)
         ctx.beginPath(); 
-        ctx.moveTo(x+25, y+15-b); 
-        ctx.lineTo(x+35, y+5-b); 
-        ctx.lineTo(x+30, y+20-b); 
+        ctx.moveTo(x+25, y+15-b); // Body connection
+        ctx.lineTo(x+35 + lunge, y+5-b); // Head connection (Lunges)
+        ctx.lineTo(x+30, y+20-b); // Throat
         ctx.fill();
         
-        // Head Box
-        ctx.fillRect(x+30, y+0-b, 15, 12);
+        // Head Box (Lunges forward)
+        let headX = x + 30 + lunge;
+        let headY = y + 0 - b;
+        ctx.fillRect(headX, headY, 15, 12);
         
-        // Snout Tip (Darker)
+        // Snout (Upper Jaw)
         ctx.fillStyle = '#b71c1c';
-        ctx.fillRect(x+40, y+4-b, 5, 8); 
+        ctx.fillRect(headX + 10, headY + 4, 5, 4); 
 
-        // Horn (Yellow)
+        // Lower Jaw (Opens/Drops)
+        ctx.fillStyle = '#b71c1c';
+        ctx.save();
+        // Pivot jaw at back of mouth
+        ctx.translate(headX + 10, headY + 8);
+        ctx.rotate(mouthOpen * 0.1); // Rotate down
+        ctx.fillRect(0, 0, 5, 2);    // The jaw
+        ctx.restore();
+
+        // Fire Glow in Mouth (If attacking)
+        if(mouthOpen > 2) {
+            ctx.fillStyle = '#ffeb3b';
+            ctx.beginPath(); ctx.arc(headX+12, headY+8, 3, 0, 6.28); ctx.fill();
+        }
+
+        // Horn
         ctx.fillStyle = '#f1c40f';
         ctx.beginPath(); 
-        ctx.moveTo(x+32, y+0-b); 
-        ctx.lineTo(x+28, y-8-b); 
-        ctx.lineTo(x+36, y+0-b); 
+        ctx.moveTo(headX + 2, headY); 
+        ctx.lineTo(headX - 2, headY - 8); 
+        ctx.lineTo(headX + 6, headY); 
         ctx.fill();
 
-        // Eye (Glowing Yellow)
+        // Eye
         ctx.fillStyle = '#ffeb3b';
-        ctx.fillRect(x+35, y+3-b, 4, 4);
+        ctx.fillRect(headX + 5, headY + 3, 4, 4);
 
-        ctx.restore(); // End Flip Group
+        ctx.restore(); 
     }
+// --- [SANDWICH END] ---
 
 
 
@@ -9295,45 +9678,115 @@ function drawMob(x, y, m) {
                 ctx.beginPath(); ctx.moveTo(rx, ry-6); ctx.lineTo(rx+5, ry); ctx.lineTo(rx, ry+6); ctx.lineTo(rx-5, ry); ctx.fill();
             }
         }
+
+
+
+
         
+        // === YETI (Gorilla Beast) ===
+       // --- [SANDWICH START] ---
         // === YETI (Gorilla Beast) ===
         else { 
             let sway = Math.sin(Date.now()/300) * 2;
             
-            // 1. Body Fur (Blue-Grey to pop on snow)
+            // --- ANIMATION CALCS ---
+            let rotOffset = 0; // 0 = Down (Idle)
+            let holdRock = false;
+
+            if (m.throwAnim > 0) {
+                m.throwAnim--; 
+                // Smooth Arc: 0 -> 1 -> 0
+                let progress = Math.sin((m.throwAnim / 40) * Math.PI);
+                
+                // Rotate arms UP (Negative radians to swing up)
+                rotOffset = -2.8 * progress; 
+                
+                // Show rock during windup phase
+                if(m.throwAnim > 15) holdRock = true;
+            }
+
+            // 1. Body Fur (Keep Original)
             ctx.fillStyle = tint || '#546e7a'; 
             ctx.beginPath();
-            // Round Shoulders
             ctx.arc(x+15, y+15-b, 12, Math.PI, Math.PI*2); // L
             ctx.arc(x+35, y+15-b, 12, Math.PI, Math.PI*2); // R
-            // Tapered Waist
             ctx.lineTo(x+35, y+42-b); 
             ctx.lineTo(x+15, y+42-b);
             ctx.fill();
 
-            // 2. Arms (Knuckle Dragging)
-            ctx.beginPath(); ctx.ellipse(x+5+sway, y+28-b, 8, 15, 0.2, 0, 6.28); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(x+45-sway, y+28-b, 8, 15, -0.2, 0, 6.28); ctx.fill();
-            // Fists
-            ctx.fillStyle = '#37474f';
-            ctx.beginPath(); ctx.arc(x+5+sway, y+40-b, 6, 0, 6.28); ctx.fill();
-            ctx.beginPath(); ctx.arc(x+45-sway, y+40-b, 6, 0, 6.28); ctx.fill();
+            // 2. HELPER: Draw Original Arm Shape, but Pivot at Shoulder
+            const drawPivotedArm = (shoulderX, shoulderY, isRight) => {
+                ctx.save();
+                ctx.translate(shoulderX, shoulderY); // Pivot Point
+                
+                // Apply Throw Rotation
+                let dir = isRight ? -1 : 1; 
+                ctx.rotate(rotOffset * dir);
 
-            // 3. FACE (ROUNDED & DISTINCT)
-            // Skin
+                // --- ORIGINAL ARM OFFSETS ---
+                // The arm center was roughly at (x+5, y+28). 
+                // Shoulder is at (x+15, y+15).
+                // Difference: dx = -10, dy = +13
+                let armX = isRight ? 10 : -10;
+                let armY = 13;
+                
+                let fistX = armX; // Fist aligns with arm
+                let fistY = 25;   // Below arm
+
+                // Original Tilt (0.2 for Left, -0.2 for Right)
+                let baseTilt = isRight ? -0.2 : 0.2;
+
+                // Draw Arm (Original Ellipse)
+                ctx.fillStyle = tint || '#546e7a'; 
+                ctx.beginPath();
+                ctx.ellipse(armX, armY, 8, 15, baseTilt, 0, 6.28); 
+                ctx.fill();
+
+                // Draw Fist (Original Circle)
+                ctx.fillStyle = '#37474f';
+                ctx.beginPath(); 
+                ctx.arc(fistX, fistY, 6, 0, 6.28); 
+                ctx.fill();
+
+                ctx.restore();
+            };
+
+            // 3. DRAW ROCK (Behind arms if holding)
+            if(holdRock) {
+                ctx.save();
+                // Calculate position above head based on rotation
+                // Lift rock up relative to rotation
+                let lift = Math.abs(rotOffset) * 20; 
+                ctx.translate(x+25, y+20-b - lift);
+                ctx.rotate((Math.random()-0.5)*0.2); 
+                
+                ctx.font = "30px sans-serif"; 
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("🪨", 0, 0); 
+                ctx.restore();
+            }
+
+            // 4. DRAW ARMS (Using Pivot Helper)
+            // Left Shoulder: x+15
+            // Right Shoulder: x+35
+            // Sway is applied to the pivot point for the idle breathing effect
+            drawPivotedArm(x+15+sway, y+15-b, false);
+            drawPivotedArm(x+35-sway, y+15-b, true);
+
+            // 5. FACE (Original)
             ctx.fillStyle = '#81d4fa'; // Ice Blue Skin
             ctx.beginPath();
-            // Rounded Jawline
             ctx.moveTo(x+15, y+15-b);
             ctx.bezierCurveTo(x+15, y+30-b, x+35, y+30-b, x+35, y+15-b);
             ctx.bezierCurveTo(x+35, y+8-b, x+15, y+8-b, x+15, y+15-b);
             ctx.fill();
 
-            // Fur Brow (Overhang)
+            // Fur Brow
             ctx.fillStyle = '#cfd8dc'; 
             ctx.beginPath(); 
             ctx.moveTo(x+12, y+12-b); 
-            ctx.quadraticCurveTo(x+25, y+18-b, x+38, y+12-b); // V-shape brow
+            ctx.quadraticCurveTo(x+25, y+18-b, x+38, y+12-b); 
             ctx.lineTo(x+38, y+8-b);
             ctx.quadraticCurveTo(x+25, y+5-b, x+12, y+8-b);
             ctx.fill();
@@ -9345,9 +9798,15 @@ function drawMob(x, y, m) {
 
             // Fangs
             ctx.fillStyle = '#fff';
-            ctx.beginPath(); ctx.moveTo(x+20, y+22-b); ctx.lineTo(x+22, y+26-b); ctx.lineTo(x+24, y+22-b); ctx.fill();
-            ctx.beginPath(); ctx.moveTo(x+26, y+22-b); ctx.lineTo(x+28, y+26-b); ctx.lineTo(x+30, y+22-b); ctx.fill();
+            // Open mouth when throwing
+            if(m.throwAnim > 10 && m.throwAnim < 30) {
+                ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(x+25, y+25-b, 5, 0, 6.28); ctx.fill();
+            } else {
+                ctx.beginPath(); ctx.moveTo(x+20, y+22-b); ctx.lineTo(x+22, y+26-b); ctx.lineTo(x+24, y+22-b); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(x+26, y+22-b); ctx.lineTo(x+28, y+26-b); ctx.lineTo(x+30, y+22-b); ctx.fill();
+            }
         }
+// --- [SANDWICH END] ---
     }
 
 
