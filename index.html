@@ -1872,7 +1872,10 @@ const AudioSys = {
         grasp_hit: "audio/Abyssal_Hit.mp3",
         starfall: "audio/Starfall.mp3",
         poison: "audio/Poison_Cloud.mp3",
-        trap: "audio/Trap.mp3",
+        // --- ADD THIS LINE HERE ---
+    hydra_shoot: "audio/Hydra_attack.mp3", 
+    // --------------------------
+		trap: "audio/Trap.mp3",
         shoot: "audio/Shoot.mp3",
         quake: "audio/Quake.mp3",
         tornado: "audio/Tornado.mp3",
@@ -3386,46 +3389,56 @@ function addEnt(type, kind, x, y, w, h) {
 
 
 function addMob(name, x, y, boss=false) {
-    // 1. BASE STATS (Buffed: 250 -> 600)
+    // 1. BASE STATS
     let hp = 600, dmg = 15; 
     let w=1, h=1;
 
     if(boss) {
+        // Default Boss Stats
         dmg = 45; w=2; h=2;
-        // --- BOSS BUFFS ---
-        if(name==="Slime King") hp=3500;  // Was 1500
-      // --- MEAT (The Chaos Titan Adjustment) ---
-        // REDUCED HP: 25,000 -> 18,000 (Fairer for nerfed classes)
-        else if(name==="Chaos Titan") { hp=18000; dmg=80; w=4; h=4; } 
-        // OTHER BOSSES (Scorpion, Hydra, Dragon): 4k -> 9k
-        else hp=9000; 
+        
+        // --- BOSS SPECIFIC OVERRIDES ---
+        if(name==="Slime King") {
+            hp = 3500; 
+        }
+        else if(name==="Chaos Titan") { 
+            hp = 18000; // High HP
+            dmg = 80;   // High Damage
+            w = 4;      // Huge Size
+            h = 4; 
+        } 
+        else {
+            // Scorpion, Hydra, Dragon
+            hp = 9000; 
+        }
     } else {
-        // --- EARLY GAME (Grass, Forest) ---
-        // Was 280 -> Now 600-700
+        // --- NORMAL MOBS ---
         if(name==='Goblin') { hp=600; dmg=20; }
         if(name==='Ent') { hp=800; dmg=30; }
         if(name.includes('Slime')) { hp=600; dmg=18; }
         
-        // --- MID GAME (Sand, Ruins, Swamp) ---
-        // Was 400 -> Now 1000-1500
         if(name==='Scorpion' || name==='Mummy') { hp=1000; dmg=30; }
         if(name==='Skeleton' || name==='Bat') { hp=1000; dmg=30; }
         if(name==='Mosquito') { hp=800; dmg=25; }
-        if(name==='Basilisk') { hp=1600; dmg=35; } // Tanky lizard
+        if(name==='Basilisk') { hp=1600; dmg=35; }
 
-        // --- LATE GAME (Snow, Lava) ---
-        // Was 900 -> Now 2200-2800 (Needs to survive Level 8+ burst)
         if(name==='Yeti' || name==='Ice Spirit') { hp=2400; dmg=45; }
         if(name==='Magma' || name==='Fire Imp') { hp=2800; dmg=55; }
 
-        // --- END GAME (Void) ---
-        // Was 1800 -> Now 4000 (Takes serious effort to kill)
         if(name==='Stone Golem' || name==='Cinder Wolf') { hp=4000; dmg=70; }
     }
     
-    S.ents.push({type:'mob', name, x, y, w, h, hp, maxHp:hp, dmg, boss, aggro:0, status:{}});
-}    
-
+    // 3. SPAWN THE MOB (Ensure MaxHP matches HP)
+    S.ents.push({
+        type:'mob', 
+        name, x, y, w, h, 
+        hp: hp, 
+        maxHp: hp, // <--- CRITICAL: This must match 'hp' exactly
+        dmg, boss, 
+        aggro:0, 
+        status:{}
+    });
+}
 
 
 
@@ -4182,11 +4195,29 @@ function update() {
         }
 
         if(e.type==='mob') {
-            // --- TUTORIAL FIX: FREEZE MOBS WHILE READING ---
-            // If the tutorial box is open, stop the monster logic here.
+            // =====================================================
+            // [FIX] MOB FREEZE LOGIC (Consolidated)
+            // =====================================================
+            let shouldFreeze = false;
+
+            // 1. Check Special Chat (Noah/Doris) -> ALWAYS FREEZE
+            let spBox = document.getElementById('special-chat');
+            if (spBox && spBox.style.display !== 'none') {
+                shouldFreeze = true;
+            }
+
+            // 2. Check Standard Chat
             let chatBox = document.getElementById('rpg-chat');
-            if (chatBox.style.display !== 'none' && chatBox.classList.contains('no-lock')) return;
-            // -----------------------------------------------
+            if (chatBox && chatBox.style.display !== 'none') {
+                let speakerName = document.getElementById('chat-name').innerText;
+                // FREEZE IF: Not "SYSTEM" AND Not a "Tutorial"
+                if (speakerName !== "SYSTEM" && !chatBox.classList.contains('no-lock')) {
+                    shouldFreeze = true;
+                }
+            }
+
+            if (shouldFreeze) return; // Stop mob logic
+            // =====================================================
 
             if(e.status.freeze > now && Math.random()<0.1) part(e.x, e.y, '#00e5ff', 1); 
             if(e.status.stun > now) return;
@@ -4195,7 +4226,79 @@ function update() {
 
 
 
-           // --- FIX: RELIABLE BURNING & POISON ---
+// --- RED DRAGON: 6-FIRE STREAM (F1-F3 Fake, F4-F6 Real) ---
+if(e.name.includes('Dragon')) {
+    if(!e.animTimer) e.animTimer = 0;
+    if(!e.shootCd) e.shootCd = 0;
+
+    let dist = Math.hypot(p.x - e.x, p.y - e.y);
+
+    // 1. TRIGGER
+    if (e.animTimer === 0 && now > e.shootCd && dist < 10 && !S.p.hidden) {
+        e.animTimer = 60;       // 1 second sequence (6 shots total)
+        e.shootCd = now + 4000; // 4s Cooldown
+        e.frozenUntil = now + 1500; // Freeze movement
+        
+        // Lock Aim Angle ONCE at start
+        let mobCx = e.x + (e.w/2);
+        let mobCy = e.y + (e.h/2);
+        e.fireAngle = Math.atan2((p.y+0.5) - mobCy, (p.x+0.5) - mobCx);
+        
+        S.audio.play('explode'); 
+    }
+
+    // 2. SHOOTING SEQUENCE
+    if (e.animTimer > 0) {
+        
+        // Fire every 10 frames (60, 50, 40, 30, 20, 10)
+        if (e.animTimer % 10 === 0) {
+            // Calculate Shot Number (1 to 6)
+            // 60->1, 50->2, 40->3 (Fake) | 30->4, 20->5, 10->6 (Real)
+            let shotNum = 7 - (e.animTimer / 10); 
+
+            // IS IT FAKE? (Shots 1, 2, 3)
+            let isFake = (shotNum <= 3);
+
+            // --- FIX: INVERTED SIZING ---
+            // Old: 1.3 + (shotNum * 0.7) -> Mouth was Huge
+            // New: 2.0 + ((6 - shotNum) * 0.7) -> Mouth is Small (2.0), Tip is Huge (5.5)
+            let scale = 2.0 + ((6 - shotNum) * 0.7);
+
+            // MOUTH POSITION
+            let faceDir = (p.x > e.x) ? 1 : -1;
+            let mouthX = e.x + (e.w/2) + (faceDir * 0.6); 
+            let mouthY = e.y + (e.h/2) - 1.3;
+
+            S.ents.push({
+                type: 'proj', 
+                owner: 'mob', 
+                kind: 'fire', 
+                x: mouthX, y: mouthY, 
+                
+                // MOVEMENT
+                vx: Math.cos(e.fireAngle) * 0.22, 
+                vy: Math.sin(e.fireAngle) * 0.22, 
+                
+                // DAMAGE LOGIC: Fake=0, Real=20
+                dmg: isFake ? 0 : 20, 
+                
+                color: '#d50000', 
+                icon: '🔥', 
+                effect: {icon: isFake ? '' : '☄️'}, 
+                
+                // --- FIX: SHORT LIFE (Breath Attack) ---
+                // Reduced from (30 + scale*5) to just 25 frames.
+                // They will disappear after traveling a short distance.
+                life: 25, 
+                
+                scale: scale
+            });
+        }
+
+        e.animTimer--;
+        return; // Stop moving
+    }
+}           // --- FIX: RELIABLE BURNING & POISON ---
             
             // 1. BURN LOGIC
             if(e.status.burn > now) {
@@ -4294,46 +4397,33 @@ function update() {
                     e.shootCd = now + 6000 + (Math.random() * 3000); 
                 }
 
-                // 2. HYDRA: LIQUID SPIT (Stops 1s, Aimed Correctly)
+                // 2. HYDRA: LIQUID SPIT (Double Shot + BIGGER + Short Range)
                 else if(e.name.includes('Hydra')) {
-                    e.frozenUntil = now + 1000; // Freeze
-                    S.audio.play('poison'); 
-                    
-                    S.ents.push({
-                        type:'proj', owner:'mob', kind:'hydra_spit',
-                        x:e.x+1, y:e.y+1, // Spawn at center
-                        vx:Math.cos(aimAng)*0.18, vy:Math.sin(aimAng)*0.18,
-                        life:50, dmg:15, 
-                        color:'#d500f9', scale: 2.8, icon: '' 
-                    });
-                    e.shootCd = now + 3000; 
-                }
-
-                // 3. DRAGON: FIRE STREAM (Stops 1.2s)
-                else if(e.name.includes('Dragon')) {
-                    e.attackAnim = 40; 
                     e.frozenUntil = now + 1200; 
-                    S.audio.play('explode');
-
-                    let faceDir = (p.x > e.x) ? 1 : -1;
-                    // For Dragon, we offset aiming slightly to the mouth
-                    let mouthX = mobCx + (faceDir * 0.6); 
-                    let mouthY = mobCy - 1.3; 
-                    let fireAng = Math.atan2(playerCy - mouthY, playerCx - mouthX);
-
-                    for(let i=0; i<3; i++) {
-                        let speedMod = 1.0 - (i * 0.2); 
-                        let wobble = (Math.random() - 0.5) * 0.1; 
-                        S.ents.push({
-                            type:'proj', owner:'mob', kind:'fire',
-                            x: mouthX, y: mouthY,
-                            vx:Math.cos(fireAng + wobble) * (0.19 * speedMod), 
-                            vy:Math.sin(fireAng + wobble) * (0.19 * speedMod),
-                            life:55, dmg: 14, 
-                            color:'#ff5722', icon:'🔥', scale: 3.5 
-                        });
+                    
+                    for(let i=0; i<2; i++) {
+                        setTimeout(() => {
+                            if(e.dead) return;
+                            
+                            S.audio.play('hydra_shoot'); 
+                            
+                            S.ents.push({
+                                type:'proj', owner:'mob', kind:'hydra_spit',
+                                x:e.x+1, y:e.y+1, 
+                                vx:Math.cos(aimAng)*0.18, vy:Math.sin(aimAng)*0.18,
+                                
+                                // --- CHANGE: REDUCED LIFE ---
+                                life: 35, // Dies after ~6 tiles distance
+                                // ----------------------------
+                                
+                                dmg:15, 
+                                color:'#d500f9', 
+                                scale: 4.5, 
+                                icon: '' 
+                            });
+                        }, i * 250); 
                     }
-                    e.shootCd = now + 3500; 
+                    e.shootCd = now + 3000; 
                 }
 
                 // 4. CHAOS TITAN: 4-WAY DOUBLE TAP
@@ -4410,14 +4500,38 @@ function update() {
 
                 let s = baseSpd * speedMod;
                 
+
+
+
                 let mx = (p.x-e.x)/d * s;
                 let my = (p.y-e.y)/d * s;
                 
-                // ONLY MOVE IF SPEED > 0
+              // ONLY MOVE IF SPEED > 0
                 if(speedMod > 0) {
-                    if(!solid(e.x+mx, e.y, e)) e.x+=mx;
-                    if(!solid(e.x, e.y+my, e)) e.y+=my;
+                    // SPLIT-AXIS MOVEMENT (The Anti-Stuck Fix)
+                    // We check X and Y independently.
+                    // If X is blocked, we still allow Y to move (and vice versa).
+                    // This creates a natural "sliding" effect against the full solid wall.
+
+                    // 1. Try moving X
+                    if(!solid(e.x + mx, e.y, e)) {
+                        e.x += mx;
+                    }
+
+                    // 2. Try moving Y
+                    if(!solid(e.x, e.y + my, e)) {
+                        e.y += my;
+                    }
                 }
+
+
+
+                // ATTACK (Melee Hit)
+
+
+
+
+
 
                 // ATTACK (Melee Hit)
                 if(d < (e.boss?2:1) && (!e.hitCd || e.hitCd < now) && speedMod > 0) {
@@ -4596,8 +4710,38 @@ function update() {
        if(e.type==='proj') {
             e.x += e.vx; e.y += e.vy; e.life--;
             if(e.icon==='🏹') part(e.x, e.y, '#fff', 1, 2); 
+
+
+
+// --- FIX: ENEMY FIREBALLS ONLY HURT PLAYER ---
+            if(e.hostile) {
+                // 1. Check Player Hit
+                if(Math.hypot(e.x - S.p.x, e.y - S.p.y) < 1.5) {
+                    S.p.hp -= e.dmg;
+                    S.audio.play('hurt');
+                    popText(S.p.x, S.p.y, `-${e.dmg}`, "#ff0000", true);
+                    e.dead = true;
+                    S.shake = 10;
+                }
+                // 2. Check Walls (Ignore Mobs!)
+                if(solid(e.x, e.y)) e.dead = true;
+                
+                return; // SKIP the rest (Don't let it hit mobs)
+            }
+            // ---------------------------------------------
+
+
             if(e.icon==='🧚') part(e.x, e.y, '#ff00ff', 1, 3);
             
+
+
+
+
+
+
+
+
+
 
  // FIX: ROCKS HIT OBSTACLES (With 0.5s Safety Delay)
             // The check "(now - e.birth > 500)" ensures it doesn't break on the Yeti's own body
@@ -4618,7 +4762,18 @@ function update() {
 
      // --- [SANDWICH START] ---
             // --- A. MOB PROJECTILES (Can ONLY hurt Player) ---
+           // --- A. MOB PROJECTILES (Can ONLY hurt Player) ---
             if(e.owner === 'mob') {
+                
+                // --- FIX: DIE ON WALLS/DEBRIS ---
+                if(solid(e.x, e.y)) {
+                    e.dead = true;
+                    // Optional: Small puff of smoke when hitting wall
+                    if(e.kind === 'fire') part(e.x, e.y, '#333', 3, 2); 
+                    return; // Stop processing
+                }
+                // --------------------------------
+
                 if(!S.p.hidden && Math.hypot(e.x - S.p.x, e.y - S.p.y) < 1.0) {
                     e.dead = true;
                     // Damage Player
@@ -4629,28 +4784,22 @@ function update() {
                     // Hydra Special: POISON EFFECT
                     if(e.kind === 'hydra_spit') {
                         part(S.p.x, S.p.y, '#d500f9', 10, 3);
-                        // Set poison for 4 seconds (4000ms)
                         S.p.poisonedUntil = Date.now() + 4000; 
                         popText(S.p.x, S.p.y - 1, "POISON!", "#8e44ad");
                     }
 
-// Dragon Special: BURN EFFECT (50% Chance)
+                    // Dragon Special: BURN EFFECT (50% Chance)
                     if(e.kind === 'fire') {
-                        if(Math.random() < 0.5) { // 50% Chance
+                        if(Math.random() < 0.5) { 
                             part(S.p.x, S.p.y, '#ff5722', 10, 3);
-                            S.p.burnedUntil = Date.now() + 3000; // 3 Seconds
+                            S.p.burnedUntil = Date.now() + 3000; 
                             popText(S.p.x, S.p.y - 1, "BURN!", "#e64a19");
                         }
                     }
 
-
-
-
-
                     if(S.p.hp <= 0 && !S.gameOver) triggerGameOver("Monster Attack");
                 }
             }
-// --- [SANDWICH END] ---
 
 
             // --- B. PLAYER PROJECTILES (Can ONLY hurt Mobs) ---
@@ -4867,77 +5016,49 @@ function solid(x, y, excludeEnt=null) {
             else if(e.name === 'Tablet') {
                 if(x >= e.x && x < e.x+e.w && y >= e.y && y < e.y+e.h) return true;
             }
+
+
+
+
         }
-        else if(e.type==='env') {
-
-
- // FIX: DRAGON FLIGHT
-            // If the moving entity is the Dragon (or Titan), ignore rocks/trees.
-            // They are huge and should crush/fly over small obstacles.
-            if(excludeEnt && (excludeEnt.name.includes('Dragon') || excludeEnt.name === 'Chaos Titan')) {
-                continue; 
-            }
-
-
-// 1. ALLOW WALKING THROUGH MUD (Add this line)
+       else if(e.type==='env') {
+            // 1. NON-SOLID DECORATION (Walk through)
             if(e.kind === 'big_mud') continue; 
+            if(['flower','mushroom','pebble'].includes(e.kind)) continue;
 
-
-
-            // 2. BLOCK VOLCANOES (Remove big_mud from here)
-           // 2. BLOCK VOLCANOES (Trapezoid / Conical Collision)
+            // 2. VOLCANO (Keep existing cone logic)
             if(e.kind === 'lava_crater') {
-                // Vertical bounds (Bottom 62% is solid)
                 let colTop = e.y + (e.h * 0.38); 
                 let colBottom = e.y + e.h;
-
-                // 1. Check Vertical Range first
                 if (y >= colTop && y < colBottom) {
-                    
-                    // 2. Calculate Slope Progress (0.0 at Waist -> 1.0 at Base)
                     let progress = (y - colTop) / (colBottom - colTop);
-
-                    // 3. Trapezoid Math
-                    // Shrink INWARD by 25% at the top, but only 5% at the bottom
                     let shrinkFactor = 0.25 - (progress * 0.20); 
                     let currentShrink = e.w * shrinkFactor;
-
-                    // 4. Horizontal Check
-                    if(x >= e.x + currentShrink && x < e.x + e.w - currentShrink) {
-                        return true;
-                    }
+                    if(x >= e.x + currentShrink && x < e.x + e.w - currentShrink) return true;
                 }
-                // IMPORTANT: This prevents falling through to the 1x1 fallback!
                 continue; 
             }
 
-           
 
 
-
-          if(e.kind==='Fence') { if(Math.abs(e.x-x)<0.5 && Math.abs(e.y-y)<0.5) return true; }
-            else if(['flower','mushroom','pebble'].includes(e.kind)) continue;
-            
-            // --- LIQUID LOGIC (STRICT CENTER) ---
-            else if(Math.round(e.x) === Math.floor(x) && Math.round(e.y) === Math.floor(y)) {
-                
-                if(excludeEnt) {
-                    // Check the NPC's CURRENT Center Point (x + 0.5)
-                    // If the NPC's CENTER is currently inside the tree tile, they are stuck -> Let them out.
-                    // If the NPC's CENTER is outside (neighbor tile), this returns false -> Block them.
-                    let npcCenterX = Math.floor(excludeEnt.x + 0.5);
-                    let npcCenterY = Math.floor(excludeEnt.y + 0.5);
-                    
-                    if (npcCenterX === Math.round(e.x) && npcCenterY === Math.round(e.y)) {
-                        return false; 
-                    }
-                }
-                
-                return true;
+           // 3. FENCE (Small Center Hitbox)
+            if(e.kind==='Fence') { 
+                if(Math.abs(e.x-x)<0.5 && Math.abs(e.y-y)<0.5) return true; 
             }
-            // ------------------------------------
+            
 
-}
+
+
+
+           // 4. STANDARD DEBRIS (FULL SOLID BLOCK)
+            else {
+                // NO PADDING. Using a full 1x1 box prevents squeezing.
+                // The "Stuck" issue is solved by the movement logic, not the hitbox.
+                if (x >= e.x && x < e.x + 1 && y >= e.y && y < e.y + 1) {
+                    return true;
+                }
+            }
+        }
 
 
 
@@ -5123,34 +5244,41 @@ function cast(k) {
         });
     }
 
-  // 2. X SKILL: BASH (Shield + Red Aura)
+  // 2. X SKILL: BASH (Shield + Red Aura + BULLET CLEAR)
     if(s.icon === '🛡️') {
-        // A. The Golden Shield (Physical Form)
+        // A. Visuals
         S.vfxs.push({
             type: 'shield_slam',
             x: p.x, y: p.y, dir: p.dir,
-            
-            // --- UPDATED: FASTER DURATION ---
-            life: 35,      // Reduced from 60 to 35
-            maxLife: 35
+            life: 35, maxLife: 35
         });
 
-        // B. The "Red Part" (Angry Energy Aura)
         S.vfxs.push({
             type: 'shield_aura', 
             x: p.x, y: p.y, dir: p.dir,
-            
-            // --- UPDATED: MATCHING DURATION ---
-            life: 35,      // Reduced from 60 to 35
-            maxLife: 35
+            life: 35, maxLife: 35
         });
         
-        // Ground particles
         for(let i=0; i<8; i++) {
              let ang = (p.dir * 1.57) + (Math.random()-0.5);
              let dist = 1.5 + Math.random();
              part(p.x + Math.cos(ang)*dist, p.y + Math.sin(ang)*dist, '#e74c3c', 1, 4, 'cloud');
         }
+
+        // --- NEW: PROJECTILE DESTRUCTION (Moved to Shield) ---
+        // Range 5.0 creates a safe zone in front of you
+        S.ents.forEach(e => {
+            if(e.type === 'proj' && e.owner === 'mob' && !e.dead) {
+                // Check range (Bash range + little extra)
+                if(Math.hypot(e.x - p.x, e.y - p.y) < 5.0) {
+                    e.dead = true; 
+                    part(e.x, e.y, '#fff', 5, 2); 
+                    // Satisfying shield block sound
+                    S.audio.play('break'); 
+                }
+            }
+        });
+        // -----------------------------------------------------
     }
 
   
@@ -5844,7 +5972,28 @@ if(s.stomp) {
 
 
 
-    if(s.heal) { p.hp=Math.min(p.maxHp, p.hp+s.heal); part(p.x, p.y, '#0f0', 30, 4); return; }
+    if(s.heal) { 
+        // --- BALANCED SCALING HEAL ---
+        let amount = s.heal; // Default (Mage gets standard 150)
+
+        if (p.class === 'warrior') {
+            // Formula: Base 200 + 30 per Level
+            // Lv 1: 230 (Nerf - Was 300)
+            // Lv 9: 470 (Buff - Helps vs Boss)
+            amount = 200 + (p.lvl * 30);
+        }
+        
+        p.hp = Math.min(p.maxHp, p.hp + amount); 
+        part(p.x, p.y, '#0f0', 30, 4); 
+        popText(p.x, p.y-1, "+" + amount, "#0f0"); 
+        return; 
+    }
+
+
+
+
+
+
     if(s.speed) { p.buffs.speed=now+4000; part(p.x, p.y, '#ff0', 30, 4); return; }
 
     if(s.proj) {
@@ -5881,8 +6030,11 @@ function kill(m) {
     // Replace the Chaos Titan block with this clean version:
     if(m.name === "Chaos Titan") {
        // 1. Basic Unlocks
+       // 1. Basic Unlocks
        unlockRegion9();      
        S.bossDead = true;    
+       
+       S.p.hidden = false; // <--- ADD THIS LINE (Fixes Ranger Ult bug) 
        drawStyledMinimap();  
        S.audio.playBGM('adventure_new'); 
 
@@ -9471,69 +9623,115 @@ function drawMob(x, y, m) {
 
 
    // REPLACES THE OLD HYDRA/FROG BLOCK
+   // OPTIMIZED HYDRA (Low CPU Cost, Same Angry Look)
     else if(m.name.includes('Hydra')) { 
-        // 1. Animation Timer
-        let t = Date.now() / 300;
+        let t = Date.now() / 200;
+        let breathe = Math.sin(t) * 1.5;
 
-        // 2. Main Body (The base at the bottom)
-        ctx.fillStyle = tint || '#1b5e20'; // Dark Swamp Green
+        // 1. SIMPLE COLORS
+        let mainCol = tint || '#66bb6a';
+        let bellyCol = '#dcedc8'; 
+        let spikeCol = '#7e57c2'; 
+
+        // 2. FEET (Simple Circles)
+        ctx.fillStyle = mainCol;
         ctx.beginPath(); 
-        ctx.ellipse(x+25, y+35-b, 15, 8, 0, 0, 6.28); 
+        ctx.arc(x+10, y+35-b, 6, 0, 6.28); 
+        ctx.arc(x+40, y+35-b, 6, 0, 6.28); 
+        ctx.arc(x+15, y+45-b, 7, 0, 6.28); 
+        ctx.arc(x+35, y+45-b, 7, 0, 6.28); 
+        ctx.fill();
+        
+        // Claws (Simple Triangles)
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        [x+12, x+42, x+17, x+37].forEach(cx => {
+            ctx.moveTo(cx-2, y+48-b); ctx.lineTo(cx, y+52-b); ctx.lineTo(cx+2, y+48-b);
+        });
         ctx.fill();
 
-        // 3. Draw 3 Heads
-        // We define positions for Left, Center, Right heads
-        let heads = [
-            { ox: 10, oy: 10, offset: 0 },   // Left
-            { ox: 25, oy: 5,  offset: 2 },   // Center (Highest)
-            { ox: 40, oy: 10, offset: 4 }    // Right
-        ];
+        // 3. BODY (Simple Ovals)
+        ctx.fillStyle = mainCol;
+        ctx.beginPath(); ctx.ellipse(x+25, y+38-b, 18, 12, 0, 0, 6.28); ctx.fill();
+        ctx.fillStyle = bellyCol;
+        ctx.beginPath(); ctx.ellipse(x+25, y+40-b, 12, 8, 0, 0, 6.28); ctx.fill();
 
-        heads.forEach(h => {
-            // Swaying motion
-            let sway = Math.sin(t + h.offset) * 3;
-            let headX = x + h.ox + sway;
-            let headY = y + h.oy;
+        // 4. HEADS (Optimized Loop)
+        // Hardcoded configs [angle, length, phase]
+        let configs = [[-0.6, 22, 0], [0, 28, 2], [0.6, 22, 4]];
 
-            // A. Draw Neck (Curve from Body to Head)
-            ctx.strokeStyle = tint || '#2e7d32'; 
-            ctx.lineWidth = 4;
-            ctx.lineCap = 'round';
+        ctx.strokeStyle = mainCol;
+        ctx.lineWidth = 9; 
+        ctx.lineCap = 'round';
+
+        for(let i=0; i<3; i++) {
+            let h = configs[i];
+            let sway = Math.sin(t + h[2]) * 2;
+            
+            let headX = x + 25 + (h[0] * 30) + sway;
+            let headY = y + 20 - h[1] - b + breathe;
+            let neckBaseX = x + 25 + (h[0] * 8); 
+            let neckBaseY = y + 32 - b;
+
+            // A. NECK (Single Stroke - No Spikes/Dashes for speed)
             ctx.beginPath();
-            ctx.moveTo(x+25, y+35-b); // Start at body center
-            // Control point curves outward
-            ctx.quadraticCurveTo(x + h.ox, y + 25 - b, headX, headY);
+            ctx.moveTo(neckBaseX, neckBaseY);
+            ctx.quadraticCurveTo(x + 25 + (h[0] * 15), y + 25, headX, headY);
             ctx.stroke();
 
-            // B. Draw Head
-            ctx.fillStyle = tint || '#2ecc71'; // Lighter Green Head
-            ctx.beginPath();
-            ctx.ellipse(headX, headY, 6, 8, sway*0.1, 0, 6.28);
+            // B. HEAD
+            ctx.save();
+            ctx.translate(headX, headY);
+            ctx.rotate(h[0] * 0.5);
+
+            // Frills (Simple Triangles)
+            ctx.fillStyle = spikeCol;
+            ctx.beginPath(); 
+            ctx.moveTo(-5, 0); ctx.lineTo(-10, -5); ctx.lineTo(-5, -5);
+            ctx.moveTo(5, 0); ctx.lineTo(10, -5); ctx.lineTo(5, -5);
             ctx.fill();
 
-            // C. Eyes (Red & menacing)
-            ctx.fillStyle = '#ff0000';
-            ctx.fillRect(headX - 3, headY - 2, 2, 2);
-            ctx.fillRect(headX + 1, headY - 2, 2, 2);
+            // Head Box (Rect)
+            ctx.fillStyle = mainCol;
+            ctx.fillRect(-7, -7, 14, 11); 
             
-            // D. Tongue (Flicking)
-            if (Math.sin(t * 3 + h.offset) > 0.8) {
-                ctx.strokeStyle = '#e74c3c'; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(headX, headY+5); ctx.lineTo(headX, headY+10); ctx.stroke();
-            }
-        });
+            // Snout (Rect)
+            ctx.fillStyle = bellyCol;
+            ctx.fillRect(-5, -1, 10, 5);
+
+            // Eyes (Simple Circles)
+            ctx.fillStyle = '#ffea00'; 
+            ctx.beginPath(); 
+            ctx.arc(-4, -3, 3, 0, 6.28); 
+            ctx.arc(4, -3, 3, 0, 6.28); 
+            ctx.fill();
+
+            // Pupils (Rects are faster than ellipses)
+            ctx.fillStyle = '#000'; 
+            ctx.fillRect(-4.5, -4, 1, 2);
+            ctx.fillRect(3.5, -4, 1, 2);
+
+            // Angry Brows (Single Rect covering top of eyes)
+            ctx.fillStyle = mainCol;
+            ctx.fillRect(-8, -9, 16, 4);
+
+            // Fangs (Simple Path)
+            ctx.fillStyle = '#fff';
+            ctx.beginPath(); 
+            ctx.moveTo(-4, 4); ctx.lineTo(-3, 7); ctx.lineTo(-2, 4); 
+            ctx.moveTo(4, 4); ctx.lineTo(3, 7); ctx.lineTo(2, 4); 
+            ctx.fill();
+
+            ctx.restore();
+        }
     }
 
 
 
 
 
-
-   // REPLACES THE RED DRAGON BLOCK
-   // --- [SANDWICH START] ---
-   // REPLACES THE RED DRAGON BLOCK
+// RED DRAGON (Fixed Belly Position + Sparks)
     else if(m.name.includes('Dragon')) {
-        // --- 1. DYNAMIC FACE DIRECTION ---
         let faceDir = (S.p.x > m.x) ? 1 : -1;
 
         ctx.save(); 
@@ -9541,40 +9739,14 @@ function drawMob(x, y, m) {
         ctx.scale(faceDir, 1); 
         ctx.translate(-(x+25), -(y+25)); 
 
-        // --- ANIMATION CALCULATIONS ---
-        let lunge = 0;      // Head forward movement
-        let mouthOpen = 0;  // Jaw drop
-        let flapSpeed = 150; // Normal flap speed
+        let flap = Math.sin(Date.now() / 150) * 5;
 
-        if (m.attackAnim > 0) {
-            m.attackAnim--; 
-            // Smooth Lunge: 0 -> 10px -> 0
-            let progress = Math.sin((m.attackAnim / 40) * Math.PI);
-            
-            lunge = progress * 10; 
-            mouthOpen = progress * 6;
-            flapSpeed = 60; // Flap furiously when attacking
-        }
-
-        let flap = Math.sin(Date.now() / flapSpeed) * 5;
-
-        // 1. WINGS (Behind Body) - Dark Red
+        // Wings
         ctx.fillStyle = '#8b0000'; 
-        // Left Wing
-        ctx.beginPath(); 
-        ctx.moveTo(x+20, y+20-b); 
-        ctx.lineTo(x+5, y-5-b+flap); 
-        ctx.lineTo(x+25, y+15-b); 
-        ctx.fill();
-        
-        // Right Wing
-        ctx.beginPath(); 
-        ctx.moveTo(x+30, y+20-b); 
-        ctx.lineTo(x+45, y-5-b+flap); 
-        ctx.lineTo(x+25, y+15-b); 
-        ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x+20, y+20-b); ctx.lineTo(x+5, y-5-b+flap); ctx.lineTo(x+25, y+15-b); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x+30, y+20-b); ctx.lineTo(x+45, y-5-b+flap); ctx.lineTo(x+25, y+15-b); ctx.fill();
 
-        // 2. TAIL (Wags)
+        // 1. TAIL (Drawn first so it's behind body)
         ctx.fillStyle = tint || '#c62828';
         ctx.beginPath(); 
         ctx.moveTo(x+25, y+35-b); 
@@ -9582,72 +9754,55 @@ function drawMob(x, y, m) {
         ctx.lineTo(x+20, y+35-b); 
         ctx.fill();
 
-        // 3. BODY (Main Torso)
-        ctx.fillStyle = tint || '#c62828'; // Red
-        ctx.fillRect(x+15, y+15-b, 20, 25); 
-        
-        // Belly
-        ctx.fillStyle = '#ffcc80';
-        ctx.fillRect(x+20, y+15-b, 10, 20);
-        
-        // Rib lines
-        ctx.fillStyle = 'rgba(0,0,0,0.2)';
-        ctx.fillRect(x+20, y+20-b, 10, 2); 
-        ctx.fillRect(x+20, y+25-b, 10, 2); 
-        ctx.fillRect(x+20, y+30-b, 10, 2);
-
-        // 4. NECK & HEAD (Animated Lunge)
+        // 2. BODY (Reshaped: Chest sticks out)
         ctx.fillStyle = tint || '#c62828';
-        
-        // Neck (Stretches with lunge)
-        ctx.beginPath(); 
-        ctx.moveTo(x+25, y+15-b); // Body connection
-        ctx.lineTo(x+35 + lunge, y+5-b); // Head connection (Lunges)
-        ctx.lineTo(x+30, y+20-b); // Throat
+        ctx.beginPath();
+        ctx.moveTo(x+20, y+15-b);  // Neck Base
+        ctx.lineTo(x+36, y+18-b);  // Chest Top (Protrudes right)
+        ctx.lineTo(x+36, y+40-b);  // Belly Bottom
+        ctx.lineTo(x+15, y+40-b);  // Back Bottom
+        ctx.lineTo(x+15, y+20-b);  // Back Top
         ctx.fill();
-        
-        // Head Box (Lunges forward)
-        let headX = x + 30 + lunge;
-        let headY = y + 0 - b;
-        ctx.fillRect(headX, headY, 15, 12);
-        
-        // Snout (Upper Jaw)
-        ctx.fillStyle = '#b71c1c';
-        ctx.fillRect(headX + 10, headY + 4, 5, 4); 
 
-        // Lower Jaw (Opens/Drops)
-        ctx.fillStyle = '#b71c1c';
-        ctx.save();
-        // Pivot jaw at back of mouth
-        ctx.translate(headX + 10, headY + 8);
-        ctx.rotate(mouthOpen * 0.1); // Rotate down
-        ctx.fillRect(0, 0, 5, 2);    // The jaw
-        ctx.restore();
+        // 3. BELLY (Shifted to Front/Right Side)
+        ctx.fillStyle = '#ffcc80'; 
+        ctx.fillRect(x+28, y+18-b, 8, 22); 
 
-        // Fire Glow in Mouth (If attacking)
-        if(mouthOpen > 2) {
-            ctx.fillStyle = '#ffeb3b';
-            ctx.beginPath(); ctx.arc(headX+12, headY+8, 3, 0, 6.28); ctx.fill();
+        // Belly Lines (Texture)
+        ctx.fillStyle = 'rgba(0,0,0,0.2)'; 
+        ctx.fillRect(x+28, y+24-b, 8, 2); 
+        ctx.fillRect(x+28, y+30-b, 8, 2); 
+        ctx.fillRect(x+28, y+36-b, 8, 2);
+
+        // Head
+        ctx.fillStyle = tint || '#c62828';
+        ctx.beginPath(); ctx.moveTo(x+25, y+15-b); ctx.lineTo(x+35, y+5-b); ctx.lineTo(x+30, y+20-b); ctx.fill();
+        ctx.fillRect(x+30, y+0-b, 15, 12); 
+        ctx.fillStyle = '#b71c1c'; ctx.fillRect(x+40, y+4-b, 5, 8); 
+
+        // Horns & Eye
+        ctx.fillStyle = '#f1c40f'; ctx.beginPath(); ctx.moveTo(x+32, y+0-b); ctx.lineTo(x+28, y-8-b); ctx.lineTo(x+36, y+0-b); ctx.fill();
+        ctx.fillStyle = '#ffeb3b'; ctx.fillRect(x+35, y+3-b, 4, 4);
+
+        // ==========================================
+        // ANIMATION: FAKE FIRE SPARKS (Circular + Colors)
+        // ==========================================
+        if(m.animTimer > 30) {
+            for(let i=0; i<5; i++) {
+                let sx = x + 45 + (Math.random() * 6); 
+                let sy = y + 6 - b + (Math.random() - 0.5) * 8;
+                
+                let colors = ['#ffffff', '#fff176', '#ff9800', '#ff5722'];
+                ctx.fillStyle = colors[Math.floor(Math.random() * colors.length)];
+
+                ctx.beginPath();
+                ctx.arc(sx, sy, 1.5 + Math.random(), 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
-
-        // Horn
-        ctx.fillStyle = '#f1c40f';
-        ctx.beginPath(); 
-        ctx.moveTo(headX + 2, headY); 
-        ctx.lineTo(headX - 2, headY - 8); 
-        ctx.lineTo(headX + 6, headY); 
-        ctx.fill();
-
-        // Eye
-        ctx.fillStyle = '#ffeb3b';
-        ctx.fillRect(headX + 5, headY + 3, 4, 4);
 
         ctx.restore(); 
     }
-// --- [SANDWICH END] ---
-
-
-
 
 
 
