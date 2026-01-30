@@ -5009,18 +5009,33 @@ function solid(x, y, excludeEnt=null) {
         if(['stone','stump','boulder'].includes(S.farm.debris[k])) return true;
     }
 
-    for(let c of corners) {
+
+
+
+   for(let c of corners) {
         let mx = Math.floor(c.x);
         let my = Math.floor(c.y);
         if(mx >= 0 && mx < MAP_S && my >= 0 && my < MAP_S) {
-            if(S.map[my*MAP_S + mx] === T.BLOCK) return true;
+            // --- [SANDWICH START: COLLISION FIX] ---
+            let tile = S.map[my*MAP_S + mx];
+            
+            // Check ALL solid types here (Block, Bedrock, Water, Lock)
+            if(tile === T.BLOCK || tile === T.BEDROCK || tile === T.WATER || tile === T.LOCK) {
+                return true;
+            }
+            // --- [SANDWICH END] ---
         }
     }
 
-    if(x<0||y<0||x>=MAP_S||y>=MAP_S) return true;
+
+
+
+   if(x<0||y<0||x>=MAP_S||y>=MAP_S) return true;
     let t = S.map[Math.floor(y)*MAP_S+Math.floor(x)];
 
-    if(t===T.WATER || t===T.BEDROCK || t===T.LOCK) return true;
+    // --- [SANDWICH START: CLEANUP] ---
+    // (We removed the old check here because we did it in the loop above)
+    // --- [SANDWICH END] ---
     
     for(let e of S.ents) {
         if(e.dead) continue;
