@@ -1196,8 +1196,11 @@ border-left: 6px solid #555; color: #fff; font-size: 28px; cursor: pointer; font
                 <p style="font-size:22px; color:#aaa;">Thank you for being here.</p>
             </div>
             <!-- WIN BUTTON (Added ID) -->
-            <button id="btn-win" onclick="S.audio.play('class_choose'); document.getElementById('win-screen').style.display='none'" 
-                    style="padding:15px 40px; font-size:24px; cursor:pointer; background:#2e7d32; color:#fff; border:2px solid #fff; margin-top:30px; border-radius:5px;">
+
+
+            <button id="btn-win" 
+                onclick="S.audio.play('class_choose'); S.paused = false; document.getElementById('win-screen').style.display='none'" 
+                style="padding:15px 40px; font-size:24px; cursor:pointer; background:#2e7d32; color:#fff; border:2px solid #fff; margin-top:30px; border-radius:5px;">
                 Return to World
             </button>
             <div style="margin-top:15px; color:#aaa;">[SPACE] TO CONTINUE</div>
@@ -6270,15 +6273,16 @@ function nextQuest() {
    // WIN CONDITION
     // WIN CONDITION
     if(S.qStep >= QUESTS.length) {
-        S.audio.play('victory'); 
+      S.audio.play('victory'); 
         
-        // --- NEW: REMOVE ALL FLOATING TEXT INSTANTLY ---
-        // This acts like a windshield wiper, cleaning the screen before showing the menu
-        let floatingTexts = document.querySelectorAll('.float-txt, .ui-pop-txt');
-        floatingTexts.forEach(el => el.remove());
-        // -----------------------------------------------
+        // --- 1. FREEZE ENGINE INSTANTLY ---
+        S.paused = true; 
+        // ----------------------------------
 
-        // Move Win Screen to front and show it
+        // 2. Remove floating text so it doesn't overlap
+        document.querySelectorAll('.float-txt, .ui-pop-txt').forEach(el => el.remove());
+
+        // 3. Move Win Screen to front and show it
         let winScreen = document.getElementById('win-screen');
         document.getElementById('game-wrapper').appendChild(winScreen);
         winScreen.style.display='flex';
