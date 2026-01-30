@@ -4244,9 +4244,12 @@ function update() {
                 if (e.moveDir === 0) offY = 0.3; 
                 if (e.moveDir === 2) offY = 0.9;
 
-                // --- ANTI-STUCK LOGIC ---
-                // 1. Check if we are currently stuck inside something
-                let amIStuck = solid(e.x + 0.5, e.y + offY, e);
+                // --- THE FIX IS HERE ---
+                // OLD BROKEN LINE: let amIStuck = solid(e.x + 0.5, e.y + offY, e);
+                
+                // NEW CORRECT LINE: Check the CENTER (0.5). 
+                // This ensures we only ignore collision if the body is ACTUALLY inside a rock.
+                let amIStuck = solid(e.x + 0.5, e.y + 0.5, e);
 
                 // 2. Allow move if: (We are Stuck) OR (Target is Free)
                 if(amIStuck || !solid(e.x + mx + 0.5, e.y + offY, e)) e.x += mx;
