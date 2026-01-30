@@ -511,10 +511,15 @@
 	#win-screen {
             position: absolute; top:0; left:0; width:100%; height:100%; 
             background: rgba(0, 20, 0, 0.95);
-            display: none; /* This hides it until you actually win */
+            display: none; 
             flex-direction: column; justify-content: center; align-items: center;
-            z-index: 2000; color: #fff; text-align: center;
+            
+            /* CHANGE THIS LINE FROM 2000 TO 10000 */
+            z-index: 10000; 
+            
+            color: #fff; text-align: center;
         }
+
 
 
 
