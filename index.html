@@ -1967,9 +1967,19 @@ const AudioSys = {
 // --- AMBIENCE LAYER MANAGER ---
     ambience: { rain: null, ocean: null, fire: null },
 
+
+
+     // --- REPLACE FROM HERE ---
+    isAmbienceLocked: false, // 1. New Flag
+
     updateAmbience: function(isRain, isOcean, isFire) {
+        // 2. Security Check: If locked, force stop everything and exit
+        if (this.isAmbienceLocked) { 
+            this.stopAmbience(); 
+            return; 
+        }
+
         const check = (key, active, vol) => {
-            // 1. Load sound if missing
             if (!this.ambience[key]) {
                 if (this.cache[key + '_loop']) {
                     this.ambience[key] = this.cache[key + '_loop'].cloneNode();
@@ -1977,7 +1987,6 @@ const AudioSys = {
                     this.ambience[key].volume = vol;
                 } else return;
             }
-            // 2. Play or Pause based on 'active' flag
             let s = this.ambience[key];
             if (active) {
                 if (s.paused) s.play().catch(e => {});
@@ -1986,10 +1995,25 @@ const AudioSys = {
             }
         };
 
-        check('rain', isRain, 0.4);   // Rain Volume
-        check('ocean', isOcean, 0.3); // Ocean Volume
-        check('fire', isFire, 0.6);   // Fire Volume
+        check('rain', isRain, 0.4);   
+        check('ocean', isOcean, 0.3); 
+        check('fire', isFire, 0.6);   
     },
+
+    stopAmbience: function() {
+        this.isAmbienceLocked = true; // 3. Engage Lock
+        ['rain', 'ocean', 'fire'].forEach(key => {
+            if (this.ambience[key]) {
+                this.ambience[key].pause();
+                this.ambience[key].currentTime = 0;
+            }
+        });
+    },
+    
+    unlockAmbience: function() { // 4. New Helper to Reset
+        this.isAmbienceLocked = false;
+    },
+    // --- END REPLACEMENT ---
 
 
 
@@ -2263,6 +2287,10 @@ function loadGame(slotId) {
         
         const data = JSON.parse(raw);
 	AudioSys.warmUp();
+
+  // --- PASTE THIS NEW LINE HERE ---
+        if(AudioSys.unlockAmbience) AudioSys.unlockAmbience();
+        // --------------------------------
 
 
 
@@ -2811,6 +2839,10 @@ function startNewGame(cls) {
     // A. Visuals & Audio
     AudioSys.play('class_choose');
     AudioSys.warmUp();
+
+// --- PASTE THIS NEW LINE HERE ---
+    if(AudioSys.unlockAmbience) AudioSys.unlockAmbience();
+    // --------------------------------
 
     // B. Run Shared Setup
     initSharedState();
@@ -3563,6 +3595,12 @@ function update() {
         if(S.world !== 'farm') {
             S.world = 'farm';
             
+ // --- PASTE THIS NEW LINE HERE ---
+            if(S.audio.unlockAmbience) S.audio.unlockAmbience();
+            // --------------------------------
+
+
+
             if(typeof Region9Farm !== 'undefined') Region9Farm.init(S);
 
             let fs = document.getElementById('farm-styles');
@@ -3574,6 +3612,13 @@ function update() {
         // === RETURNING TO MAIN WORLD ===
         if(S.world === 'farm') {
             S.world = 'main';
+
+
+// --- PASTE THIS NEW LINE HERE ---
+            S.audio.stopAmbience(); 
+// --------------------------------
+
+
 
             let fs = document.getElementById('farm-styles');
             if(fs) fs.disabled = true; 
@@ -13034,6 +13079,12 @@ function triggerGameOver(killerName) {
 }
 
 function returnToMenu() {
+// --- PASTE THIS NEW LINE HERE ---
+    if(S.audio) S.audio.stopAmbience();
+// --------------------------------
+
+
+
     S.audio.play('esc'); 
     
    // --- FORCE HOME MUSIC ---
