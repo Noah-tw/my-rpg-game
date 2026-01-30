@@ -3196,15 +3196,15 @@ S.farm.justSold = true; // Signal for tutorial
             triggerSaveUI(); 
         }
 
-        // --- WEATHER LOGIC ---
 
-    // --- WEATHER LOGIC ---
 
-        // --- WEATHER LOGIC ---
-        // 20% Chance of Rain tomorrow
-        S.farm.weather = (Math.random() < 0.35) ? 'rain' : 'sun';
-        
-        // --- DEBRIS REGENERATION (Every 3 Days) ---
+
+ 
+
+
+
+
+
 
         // --- DEBRIS REGENERATION (Every 3 Days) ---
         if (S.farm.day % 3 === 0) {
