@@ -4244,16 +4244,29 @@ function update() {
                 if (e.moveDir === 0) offY = 0.3; 
                 if (e.moveDir === 2) offY = 0.9;
 
-                // --- THE FIX IS HERE ---
-                // OLD BROKEN LINE: let amIStuck = solid(e.x + 0.5, e.y + offY, e);
-                
-                // NEW CORRECT LINE: Check the CENTER (0.5). 
-                // This ensures we only ignore collision if the body is ACTUALLY inside a rock.
+                // 1. Check if we are inside a solid object (Rock/Tree)
                 let amIStuck = solid(e.x + 0.5, e.y + 0.5, e);
 
-                // 2. Allow move if: (We are Stuck) OR (Target is Free)
-                if(amIStuck || !solid(e.x + mx + 0.5, e.y + offY, e)) e.x += mx;
-                if(amIStuck || !solid(e.x + 0.5, e.y + my + offY, e)) e.y += my;
+                // 2. SAFETY EXCEPTION: If we are stuck in WATER (0) or VOID (8), 
+                // we revoke "Stuck Privileges". We treat Water as a hard wall.
+                let centerMapIdx = Math.floor(e.y + 0.5) * MAP_S + Math.floor(e.x + 0.5);
+                if (S.map[centerMapIdx] === 0 || S.map[centerMapIdx] === 8) {
+                    amIStuck = false;
+                }
+
+                // 3. X Movement (With bounce logic)
+                if(amIStuck || !solid(e.x + mx + 0.5, e.y + offY, e)) {
+                    e.x += mx;
+                } else {
+                    e.moveTimer = 0; // Hit a wall? Pick new direction immediately
+                }
+
+                // 4. Y Movement (With bounce logic)
+                if(amIStuck || !solid(e.x + 0.5, e.y + my + offY, e)) {
+                    e.y += my;
+                } else {
+                    e.moveTimer = 0; // Hit a wall? Pick new direction immediately
+                }
             }
         }
 
