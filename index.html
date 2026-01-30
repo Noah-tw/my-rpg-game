@@ -489,7 +489,11 @@
             position: absolute; top:0; left:0; width:100%; height:100%; 
             background: rgba(20, 0, 0, 0.95);
             display: flex; flex-direction: column; justify-content: center; align-items: center;
-            z-index: 2000; color: #fff; text-align: center;
+            
+            /* CHANGE: Make this higher than the text (6000) */
+            z-index: 10000 !important; 
+            
+            color: #fff; text-align: center;
         }
 
         /* --- ALWAYS HIGHLIGHT WIN/DIE BUTTONS --- */
@@ -508,12 +512,16 @@
 
 	
 
-	#win-screen {
+	  #win-screen {
             position: absolute; top:0; left:0; width:100%; height:100%; 
             background: rgba(0, 20, 0, 0.95);
-            display: none; /* This hides it until you actually win */
+            display: none; 
             flex-direction: column; justify-content: center; align-items: center;
-            z-index: 2000; color: #fff; text-align: center;
+            
+            /* CHANGE: Make this higher than the text (6000) */
+            z-index: 10000 !important; 
+            
+            color: #fff; text-align: center;
         }
 
 
@@ -6259,11 +6267,22 @@ function nextQuest() {
     let prevQ = QUESTS[S.qStep-1];
     if(prevQ && prevQ.lock !== undefined) unlockGate(prevQ.lock);
     
+   // WIN CONDITION
     // WIN CONDITION
     if(S.qStep >= QUESTS.length) {
         S.audio.play('victory'); 
-        document.getElementById('win-screen').style.display='flex';
-    } else {
+        
+        // --- NEW: REMOVE ALL FLOATING TEXT INSTANTLY ---
+        // This acts like a windshield wiper, cleaning the screen before showing the menu
+        let floatingTexts = document.querySelectorAll('.float-txt, .ui-pop-txt');
+        floatingTexts.forEach(el => el.remove());
+        // -----------------------------------------------
+
+        // Move Win Screen to front and show it
+        let winScreen = document.getElementById('win-screen');
+        document.getElementById('game-wrapper').appendChild(winScreen);
+        winScreen.style.display='flex';
+    }else {
         // --- FIXED: COMBO SYSTEM ---
         // If the NEXT quest target is ALREADY dead (Pre-killed),
         // wait 1.5 seconds, then auto-complete it.
@@ -13077,8 +13096,12 @@ function triggerGameOver(killerName) {
     
     S.audio.play('over'); // AUDIO
 
+    // --- FIX: MOVE DEATH SCREEN TO FRONT (DOM ORDER) ---
+    let dScreen = document.getElementById('death-screen');
+    document.getElementById('game-wrapper').appendChild(dScreen);
+
     // Show Death Screen
-    document.getElementById('death-screen').style.display = 'flex';
+    dScreen.style.display = 'flex';
     document.getElementById('death-msg').innerText = killerName || "Unknown Force";
 }
 
