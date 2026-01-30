@@ -511,15 +511,10 @@
 	#win-screen {
             position: absolute; top:0; left:0; width:100%; height:100%; 
             background: rgba(0, 20, 0, 0.95);
-            display: none; 
+            display: none; /* This hides it until you actually win */
             flex-direction: column; justify-content: center; align-items: center;
-            
-            /* CHANGE THIS LINE FROM 2000 TO 10000 */
-            z-index: 10000; 
-            
-            color: #fff; text-align: center;
+            z-index: 2000; color: #fff; text-align: center;
         }
-
 
 
 
@@ -4238,9 +4233,13 @@ function update() {
                 if (e.moveDir === 0) offY = 0.3; 
                 if (e.moveDir === 2) offY = 0.9;
 
-                // Check collisions using the calculated offsets
-                if(!solid(e.x + mx + 0.5, e.y + offY, e)) e.x += mx;
-                if(!solid(e.x + 0.5, e.y + my + offY, e)) e.y += my;
+                // --- ANTI-STUCK LOGIC ---
+                // 1. Check if we are currently stuck inside something
+                let amIStuck = solid(e.x + 0.5, e.y + offY, e);
+
+                // 2. Allow move if: (We are Stuck) OR (Target is Free)
+                if(amIStuck || !solid(e.x + mx + 0.5, e.y + offY, e)) e.x += mx;
+                if(amIStuck || !solid(e.x + 0.5, e.y + my + offY, e)) e.y += my;
             }
         }
 
